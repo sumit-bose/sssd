@@ -304,12 +304,6 @@ static int pam_process_init(TALLOC_CTX *mem_ctx,
     }
     responder_set_fd_limit(fd_limit);
 
-    ret = schedule_get_domains_task(rctx, rctx->ev, rctx, pctx->rctx->ncache);
-    if (ret != EOK) {
-        DEBUG(SSSDBG_FATAL_FAILURE, "schedule_get_domains_tasks failed.\n");
-        goto done;
-    }
-
     /* Check if certificate based authentication is enabled */
     ret = confdb_get_bool(pctx->rctx->cdb,
                           CONFDB_PAM_CONF_ENTRY,

@@ -1233,10 +1233,9 @@ int sss_process_init(TALLOC_CTX *mem_ctx,
         goto fail;
     }
 
-    /* after all initializations we are ready to listen on our socket */
-    ret = activate_unix_sockets(rctx, conn_setup);
+    ret = responder_init_ncache(rctx, rctx->cdb, &rctx->ncache);
     if (ret != EOK) {
-        DEBUG(SSSDBG_FATAL_FAILURE, "fatal error initializing socket\n");
+        DEBUG(SSSDBG_CRIT_FAILURE, "fatal error initializing negcache\n");
         goto fail;
     }
 
@@ -1248,9 +1247,16 @@ int sss_process_init(TALLOC_CTX *mem_ctx,
         goto fail;
     }
 
-    ret = responder_init_ncache(rctx, rctx->cdb, &rctx->ncache);
+    ret = schedule_get_domains_task(rctx, rctx->ev, rctx, rctx->ncache);
     if (ret != EOK) {
-        DEBUG(SSSDBG_CRIT_FAILURE, "fatal error initializing negcache\n");
+        DEBUG(SSSDBG_FATAL_FAILURE, "schedule_get_domains_tasks failed.\n");
+        goto fail;
+    }
+
+    /* after all initializations we are ready to listen on our socket */
+    ret = activate_unix_sockets(rctx, conn_setup);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_FATAL_FAILURE, "fatal error initializing socket\n");
         goto fail;
     }
 

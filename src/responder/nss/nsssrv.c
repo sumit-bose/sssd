@@ -485,12 +485,6 @@ int nss_process_init(TALLOC_CTX *mem_ctx,
     }
     responder_set_fd_limit(fd_limit);
 
-    ret = schedule_get_domains_task(rctx, rctx->ev, rctx, nctx->rctx->ncache);
-    if (ret != EOK) {
-        DEBUG(SSSDBG_FATAL_FAILURE, "schedule_get_domains_tasks failed.\n");
-        goto fail;
-    }
-
     DEBUG(SSSDBG_TRACE_FUNC, "NSS Initialization complete\n");
 
     return EOK;

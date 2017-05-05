@@ -382,6 +382,7 @@ static errno_t check_last_request(struct resp_ctx *rctx, const char *hint)
 struct get_domains_state {
     struct resp_ctx *rctx;
     struct sss_nc_ctx *optional_ncache;
+    bool get_domains_done;
 };
 
 static void get_domains_at_startup_done(struct tevent_req *req)
@@ -405,6 +406,7 @@ static void get_domains_at_startup_done(struct tevent_req *req)
         }
     }
 
+    state->get_domains_done = true;
     talloc_free(state);
     return;
 }
@@ -443,6 +445,7 @@ errno_t schedule_get_domains_task(TALLOC_CTX *mem_ctx,
     }
     state->rctx = rctx;
     state->optional_ncache = optional_ncache;
+    state->get_domains_done = false;
 
     imm = tevent_create_immediate(mem_ctx);
     if (imm == NULL) {
@@ -452,6 +455,11 @@ errno_t schedule_get_domains_task(TALLOC_CTX *mem_ctx,
     }
 
     tevent_schedule_immediate(imm, ev, get_domains_at_startup, state);
+
+    while (!state->get_domains_done) {
+        DEBUG(SSSDBG_TRACE_ALL, "Waiting for init_done ...\n");
+        tevent_loop_once(rctx->ev);
+    }
 
     return EOK;
 }
