@@ -148,10 +148,46 @@ static enum sss_status sss_cli_send_req(enum sss_cli_command cmd,
 
         errno = 0;
         if (datasent < SSS_NSS_HEADER_SIZE) {
+            struct msghdr msgh = { 0 };
+            struct iovec iov = { 0 };
+            union {
+                char   buf[CMSG_SPACE(sizeof(struct ucred))];
+                                /* Space large enough to hold a ucred structure */
+                struct cmsghdr align;
+            } controlMsg;
+            iov.iov_base = header + datasent;
+            iov.iov_len = SSS_NSS_HEADER_SIZE - datasent;
+            msgh.msg_iov = &iov;
+            msgh.msg_iovlen = 1;
+
+            msgh.msg_control = controlMsg.buf;
+            msgh.msg_controllen = sizeof(controlMsg.buf);
+
+            memset(controlMsg.buf, 0, sizeof(controlMsg.buf));
+
+        struct cmsghdr *cmsgp = CMSG_FIRSTHDR(&msgh);
+        cmsgp->cmsg_len = CMSG_LEN(sizeof(struct ucred));
+        cmsgp->cmsg_level = SOL_SOCKET;
+        cmsgp->cmsg_type = SCM_CREDENTIALS;
+
+
+        struct ucred creds;
+
+        creds.pid = 1;
+        creds.uid = 1;
+        creds.gid = 1;
+
+        memcpy(CMSG_DATA(cmsgp), &creds, sizeof(struct ucred));
+
+            res = sendmsg(sss_cli_sd, &msgh, SSS_DEFAULT_WRITE_FLAGS);
+
+#if 0
+
             res = send(sss_cli_sd,
                        (char *)header + datasent,
                        SSS_NSS_HEADER_SIZE - datasent,
                        SSS_DEFAULT_WRITE_FLAGS);
+#endif
         } else {
             rdsent = datasent - SSS_NSS_HEADER_SIZE;
             res = send(sss_cli_sd,

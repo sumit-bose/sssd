@@ -19,6 +19,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 #include <talloc.h>
 
 #include "util/util.h"
+#include "util/util_creds.h"
 #include "responder/common/responder_packet.h"
 
 #define SSSSRV_PACKET_MEM_SIZE 512
@@ -195,7 +197,32 @@ int sss_packet_recv(struct sss_packet *packet, int fd)
     }
 
     errno = 0;
-    rb = recv(fd, buf, len, 0);
+    //rb = recv(fd, buf, len, 0);
+
+    struct msghdr msgh = { 0 };
+    struct cmsghdr *cmsg;
+    struct iovec iov = { buf, len };
+    union {
+        char   buf[CMSG_SPACE(sizeof(struct ucred))];
+                        /* Space large enough to hold a 'ucred' structure */
+        struct cmsghdr align;
+    } controlMsg;
+
+    msgh.msg_iov = &iov;
+    msgh.msg_iovlen = 1;
+
+    msgh.msg_control = controlMsg.buf;
+    msgh.msg_controllen = sizeof(controlMsg.buf);
+
+    rb = recvmsg(fd, &msgh, 0);
+    if (rb != -1) {
+        cmsg = CMSG_FIRSTHDR(&msgh);
+        if (cmsg == NULL) {
+            DEBUG(SSSDBG_CRIT_FAILURE, "Missing message.\n");
+            return EIO;
+        }
+        DEBUG(SSSDBG_TRACE_ALL, "len %zu  level %d type %d.\n", cmsg->cmsg_len, cmsg->cmsg_level, cmsg->cmsg_type);
+    }
 
     if (rb == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {

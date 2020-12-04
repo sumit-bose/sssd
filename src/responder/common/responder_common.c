@@ -101,6 +101,35 @@ static errno_t get_client_cred(struct cli_ctx *cctx)
 {
     SEC_CTX secctx;
     int ret;
+    int optval;
+//    ssize_t recv_size;
+//    struct msghdr msgh = { 0 };
+//    struct cmsghdr *cmsg;
+
+    optval = 1;
+    ret = setsockopt(cctx->cfd, SOL_SOCKET, SO_PASSCRED, &optval, sizeof(optval));
+    if (ret != EOK) {
+        ret = errno;
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "setsockopt failed [%d][%s].\n", ret, strerror(ret));
+        return ret;
+    }
+
+#if 0
+    errno = 0;
+    recv_size = recvmsg(cctx->cfd, &msgh, 0);
+    if (recv_size == -1) {
+        ret = errno;
+        DEBUG(SSSDBG_CRIT_FAILURE, "recvmsg failed [%d][%s].\n", ret, strerror(ret));
+        return ret;
+    }
+    cmsg = CMSG_FIRSTHDR(&msgh);
+    if (cmsg == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Missing message.\n");
+        return EIO;
+    }
+    DEBUG(SSSDBG_TRACE_ALL, "len %zu  level %d type %d.\n", cmsg->cmsg_len, cmsg->cmsg_level, cmsg->cmsg_type);
+#endif
 
     cctx->creds = talloc_zero(cctx, struct cli_creds);
     if (!cctx->creds) return ENOMEM;
