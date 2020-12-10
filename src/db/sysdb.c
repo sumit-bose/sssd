@@ -2052,7 +2052,7 @@ static bool sysdb_ldb_msg_difference(struct ldb_dn *entry_dn,
     return false;
 }
 
-bool sysdb_entry_attrs_diff(struct sysdb_ctx *sysdb,
+bool sysdb_entry_attrs_diff_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
                             struct ldb_dn *entry_dn,
                             struct sysdb_attrs *attrs,
                             int mod_op)
@@ -2078,7 +2078,7 @@ bool sysdb_entry_attrs_diff(struct sysdb_ctx *sysdb,
         return true;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (tmp_ctx == NULL) {
         goto done;
     }

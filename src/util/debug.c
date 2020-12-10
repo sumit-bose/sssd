@@ -124,6 +124,11 @@ errno_t set_debug_file_from_fd(const int fd)
     return EOK;
 }
 
+FILE *get_debug_file(void)
+{
+    return debug_file;
+}
+
 int get_fd_from_debug_file(void)
 {
     if (debug_file == NULL) {

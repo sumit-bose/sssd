@@ -980,7 +980,12 @@ static int sysdb_set_ts_entry_attr(struct sysdb_ctx *sysdb,
                                    struct sysdb_attrs *attrs,
                                    int mod_op);
 
-static errno_t sysdb_create_ts_entry(struct sysdb_ctx *sysdb,
+static int sysdb_set_ts_entry_attr_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
+                                   struct ldb_dn *entry_dn,
+                                   struct sysdb_attrs *attrs,
+                                   int mod_op);
+
+static errno_t sysdb_create_ts_entry_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
                                      struct ldb_dn *entry_dn,
                                      struct sysdb_attrs *attrs)
 {
@@ -993,7 +998,7 @@ static errno_t sysdb_create_ts_entry(struct sysdb_ctx *sysdb,
         return EOK;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
@@ -1228,7 +1233,7 @@ done:
     return ret;
 }
 
-static errno_t sysdb_create_ts_obj(struct sss_domain_info *domain,
+static errno_t sysdb_create_ts_obj_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                                    enum sysdb_obj_type obj_type,
                                    const char *obj_name,
                                    uint64_t cache_timeout,
@@ -1243,7 +1248,7 @@ static errno_t sysdb_create_ts_obj(struct sss_domain_info *domain,
         return EOK;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
@@ -1280,26 +1285,26 @@ static errno_t sysdb_check_and_update_ts_grp(struct sss_domain_info *domain,
                                          attrs, cache_timeout, now);
 }
 
-static errno_t sysdb_create_ts_grp(struct sss_domain_info *domain,
+static errno_t sysdb_create_ts_grp_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                                    const char *grp_name,
                                    uint64_t cache_timeout,
                                    time_t now)
 {
-    return sysdb_create_ts_obj(domain, SYSDB_GROUP, grp_name,
+    return sysdb_create_ts_obj_pool(pool, domain, SYSDB_GROUP, grp_name,
                                cache_timeout, now);
 }
 
-static errno_t sysdb_create_ts_usr(struct sss_domain_info *domain,
+static errno_t sysdb_create_ts_usr_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                                    const char *usr_name,
                                    uint64_t cache_timeout,
                                    time_t now)
 {
-    return sysdb_create_ts_obj(domain, SYSDB_USER, usr_name,
+    return sysdb_create_ts_obj_pool(pool, domain, SYSDB_USER, usr_name,
                                cache_timeout, now);
 }
 
 /* =Replace-Attributes-On-Entry=========================================== */
-static int sysdb_set_cache_entry_attr(struct ldb_context *ldb,
+static int sysdb_set_cache_entry_attr_pool(TALLOC_CTX *pool, struct ldb_context *ldb,
                                       struct ldb_dn *entry_dn,
                                       struct sysdb_attrs *attrs,
                                       int mod_op)
@@ -1309,7 +1314,7 @@ static int sysdb_set_cache_entry_attr(struct ldb_context *ldb,
     int lret;
     TALLOC_CTX *tmp_ctx;
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -1345,6 +1350,14 @@ done:
     return ret;
 }
 
+static int sysdb_set_cache_entry_attr(struct ldb_context *ldb,
+                                      struct ldb_dn *entry_dn,
+                                      struct sysdb_attrs *attrs,
+                                      int mod_op)
+{
+    return sysdb_set_cache_entry_attr_pool(NULL, ldb, entry_dn, attrs, mod_op);
+}
+
 static const char *get_attr_storage(int state_mask)
 {
     const char *storage = "";
@@ -1360,7 +1373,7 @@ static const char *get_attr_storage(int state_mask)
     return storage;
 }
 
-int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
+int sysdb_set_entry_attr_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
                          struct ldb_dn *entry_dn,
                          struct sysdb_attrs *attrs,
                          int mod_op)
@@ -1370,9 +1383,9 @@ int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
     errno_t tret = EOK;
     int state_mask = SSS_SYSDB_NO_CACHE;
 
-    sysdb_write = sysdb_entry_attrs_diff(sysdb, entry_dn, attrs, mod_op);
+    sysdb_write = sysdb_entry_attrs_diff_pool(pool, sysdb, entry_dn, attrs, mod_op);
     if (sysdb_write == true) {
-        ret = sysdb_set_cache_entry_attr(sysdb->ldb, entry_dn, attrs, mod_op);
+        ret = sysdb_set_cache_entry_attr_pool(pool, sysdb->ldb, entry_dn, attrs, mod_op);
         if (ret != EOK) {
             DEBUG(SSSDBG_MINOR_FAILURE,
                   "Cannot set attrs for %s, %d [%s]\n",
@@ -1383,10 +1396,10 @@ int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
     }
 
     if (ret == EOK && is_ts_ldb_dn(entry_dn)) {
-        tret = sysdb_set_ts_entry_attr(sysdb, entry_dn, attrs, mod_op);
+        tret = sysdb_set_ts_entry_attr_pool(pool, sysdb, entry_dn, attrs, mod_op);
         if (tret == ENOENT && mod_op == SYSDB_MOD_REP) {
             /* Update failed because TS does non exist. Create missing TS */
-            tret = sysdb_set_ts_entry_attr(sysdb, entry_dn, attrs,
+            tret = sysdb_set_ts_entry_attr_pool(pool, sysdb, entry_dn, attrs,
                                            SYSDB_MOD_ADD);
             DEBUG(SSSDBG_TRACE_FUNC,
                   "The TS value for %s does not exist, trying to create it\n",
@@ -1411,7 +1424,15 @@ int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
     return ret;
 }
 
-static int sysdb_rep_ts_entry_attr(struct sysdb_ctx *sysdb,
+int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
+                         struct ldb_dn *entry_dn,
+                         struct sysdb_attrs *attrs,
+                         int mod_op)
+{
+    return sysdb_set_entry_attr_pool(NULL, sysdb, entry_dn, attrs, mod_op);
+}
+
+static int sysdb_rep_ts_entry_attr_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
                                    struct ldb_dn *entry_dn,
                                    struct sysdb_attrs *attrs)
 {
@@ -1419,11 +1440,11 @@ static int sysdb_rep_ts_entry_attr(struct sysdb_ctx *sysdb,
         return EOK;
     }
 
-    return sysdb_set_cache_entry_attr(sysdb->ldb_ts, entry_dn,
+    return sysdb_set_cache_entry_attr_pool(pool, sysdb->ldb_ts, entry_dn,
                                       attrs, SYSDB_MOD_REP);
 }
 
-static int sysdb_set_ts_entry_attr(struct sysdb_ctx *sysdb,
+static int sysdb_set_ts_entry_attr_pool(TALLOC_CTX *pool, struct sysdb_ctx *sysdb,
                                    struct ldb_dn *entry_dn,
                                    struct sysdb_attrs *attrs,
                                    int mod_op)
@@ -1436,7 +1457,7 @@ static int sysdb_set_ts_entry_attr(struct sysdb_ctx *sysdb,
         return EOK;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -1449,10 +1470,10 @@ static int sysdb_set_ts_entry_attr(struct sysdb_ctx *sysdb,
 
     switch (mod_op) {
     case SYSDB_MOD_REP:
-        ret = sysdb_rep_ts_entry_attr(sysdb, entry_dn, ts_attrs);
+        ret = sysdb_rep_ts_entry_attr_pool(tmp_ctx, sysdb, entry_dn, ts_attrs);
         break;
     case SYSDB_MOD_ADD:
-        ret = sysdb_create_ts_entry(sysdb, entry_dn, ts_attrs);
+        ret = sysdb_create_ts_entry_pool(tmp_ctx, sysdb, entry_dn, ts_attrs);
         break;
     default:
         ret = EINVAL;
@@ -1464,9 +1485,17 @@ done:
     return ret;
 }
 
+static int sysdb_set_ts_entry_attr(struct sysdb_ctx *sysdb,
+                                   struct ldb_dn *entry_dn,
+                                   struct sysdb_attrs *attrs,
+                                   int mod_op)
+{
+    return sysdb_set_ts_entry_attr_pool(NULL, sysdb, entry_dn, attrs, mod_op);
+}
+
 /* =Replace-Attributes-On-User============================================ */
 
-int sysdb_set_user_attr(struct sss_domain_info *domain,
+int sysdb_set_user_attr_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                         const char *name,
                         struct sysdb_attrs *attrs,
                         int mod_op)
@@ -1475,7 +1504,7 @@ int sysdb_set_user_attr(struct sss_domain_info *domain,
     TALLOC_CTX *tmp_ctx;
     errno_t ret;
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -1486,7 +1515,7 @@ int sysdb_set_user_attr(struct sss_domain_info *domain,
         goto done;
     }
 
-    ret = sysdb_set_entry_attr(domain->sysdb, dn, attrs, mod_op);
+    ret = sysdb_set_entry_attr_pool(tmp_ctx, domain->sysdb, dn, attrs, mod_op);
     if (ret != EOK) {
         goto done;
     }
@@ -1495,6 +1524,14 @@ int sysdb_set_user_attr(struct sss_domain_info *domain,
 done:
     talloc_zfree(tmp_ctx);
     return ret;
+}
+
+int sysdb_set_user_attr(struct sss_domain_info *domain,
+                        const char *name,
+                        struct sysdb_attrs *attrs,
+                        int mod_op)
+{
+    return sysdb_set_user_attr_pool(NULL, domain, name, attrs, mod_op);
 }
 
 /* =Replace-Attributes-On-Group=========================================== */
@@ -1740,7 +1777,7 @@ done:
 
 /* =Add-Basic-User-NO-CHECKS============================================== */
 
-int sysdb_add_basic_user(struct sss_domain_info *domain,
+int sysdb_add_basic_user_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                          const char *name,
                          uid_t uid, gid_t gid,
                          const char *gecos,
@@ -1751,7 +1788,7 @@ int sysdb_add_basic_user(struct sss_domain_info *domain,
     int ret;
     TALLOC_CTX *tmp_ctx;
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -1814,6 +1851,17 @@ done:
     }
     talloc_zfree(tmp_ctx);
     return ret;
+}
+
+int sysdb_add_basic_user(struct sss_domain_info *domain,
+                         const char *name,
+                         uid_t uid, gid_t gid,
+                         const char *gecos,
+                         const char *homedir,
+                         const char *shell)
+{
+    return sysdb_add_basic_user_pool(NULL, domain, name, uid, gid, gecos,
+                                     homedir, shell);
 }
 
 static errno_t
@@ -2007,7 +2055,7 @@ done:
 
 /* =Add-User-Function===================================================== */
 
-int sysdb_add_user(struct sss_domain_info *domain,
+int sysdb_add_user_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                    const char *name,
                    uid_t uid, gid_t gid,
                    const char *gecos,
@@ -2050,7 +2098,7 @@ int sysdb_add_user(struct sss_domain_info *domain,
         return ERANGE;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -2104,10 +2152,10 @@ int sysdb_add_user(struct sss_domain_info *domain,
     }
 
     /* try to add the user */
-    ret = sysdb_add_basic_user(domain, name, uid, gid, gecos, homedir, shell);
+    ret = sysdb_add_basic_user_pool(tmp_ctx, domain, name, uid, gid, gecos, homedir, shell);
     if (ret) goto done;
 
-    ret = sysdb_create_ts_usr(domain, name, cache_timeout, now);
+    ret = sysdb_create_ts_usr_pool(tmp_ctx, domain, name, cache_timeout, now);
     if (ret != EOK) {
         DEBUG(SSSDBG_MINOR_FAILURE,
               "Cannot create user timestamp entry\n");
@@ -2152,7 +2200,7 @@ int sysdb_add_user(struct sss_domain_info *domain,
             if (ret) goto done;
         }
 
-        ret = sysdb_set_user_attr(domain, name, id_attrs, SYSDB_MOD_REP);
+        ret = sysdb_set_user_attr_pool(tmp_ctx, domain, name, id_attrs, SYSDB_MOD_REP);
         /* continue on success, to commit additional attrs */
         if (ret) goto done;
     }
@@ -2169,7 +2217,7 @@ int sysdb_add_user(struct sss_domain_info *domain,
                                   (now + cache_timeout) : 0));
     if (ret) goto done;
 
-    ret = sysdb_set_user_attr(domain, name, attrs, SYSDB_MOD_REP);
+    ret = sysdb_set_user_attr_pool(tmp_ctx, domain, name, attrs, SYSDB_MOD_REP);
     if (ret) goto done;
 
     if (domain->enumerate == false) {
@@ -2194,6 +2242,21 @@ done:
     }
     talloc_zfree(tmp_ctx);
     return ret;
+}
+
+int sysdb_add_user(struct sss_domain_info *domain,
+                   const char *name,
+                   uid_t uid, gid_t gid,
+                   const char *gecos,
+                   const char *homedir,
+                   const char *shell,
+                   const char *orig_dn,
+                   struct sysdb_attrs *attrs,
+                   int cache_timeout,
+                   time_t now)
+{
+    return sysdb_add_user_pool(NULL, domain, name, uid, gid, gecos, homedir,
+                               shell, orig_dn, attrs, cache_timeout, now);
 }
 
 /* =Add-Basic-Group-NO-CHECKS============================================= */
@@ -2345,7 +2408,7 @@ int sysdb_add_group(struct sss_domain_info *domain,
         goto done;
     }
 
-    ret = sysdb_create_ts_grp(domain, name, cache_timeout, now);
+    ret = sysdb_create_ts_grp_pool(NULL, domain, name, cache_timeout, now);
     if (ret != EOK) {
         DEBUG(SSSDBG_MINOR_FAILURE,
               "Cannot set timestamp cache attributes for a group\n");
@@ -2481,7 +2544,7 @@ int sysdb_add_incomplete_group(struct sss_domain_info *domain,
         now = time(NULL);
     }
 
-    ret = sysdb_create_ts_grp(domain, name, now-1, now);
+    ret = sysdb_create_ts_grp_pool(NULL, domain, name, now-1, now);
     if (ret != EOK) {
         DEBUG(SSSDBG_MINOR_FAILURE,
               "Cannot set timestamp cache attributes for a group\n");
@@ -2712,6 +2775,18 @@ static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
                                     uint64_t cache_timeout,
                                     time_t now);
 
+static errno_t sysdb_store_new_user_pool(TALLOC_CTX *pool,struct sss_domain_info *domain,
+                                    const char *name,
+                                    uid_t uid,
+                                    gid_t gid,
+                                    const char *gecos,
+                                    const char *homedir,
+                                    const char *shell,
+                                    const char *orig_dn,
+                                    struct sysdb_attrs *attrs,
+                                    uint64_t cache_timeout,
+                                    time_t now);
+
 
 static errno_t sysdb_store_user_attrs(struct sss_domain_info *domain,
                                       const char *name,
@@ -2729,7 +2804,7 @@ static errno_t sysdb_store_user_attrs(struct sss_domain_info *domain,
 /* if one of the basic attributes is empty ("") as opposed to NULL,
  * this will just remove it */
 
-int sysdb_store_user(struct sss_domain_info *domain,
+int sysdb_store_user_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                      const char *name,
                      const char *pwd,
                      uid_t uid, gid_t gid,
@@ -2753,7 +2828,7 @@ int sysdb_store_user(struct sss_domain_info *domain,
         now = time(NULL);
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (!tmp_ctx) {
         return ENOMEM;
     }
@@ -2789,7 +2864,7 @@ int sysdb_store_user(struct sss_domain_info *domain,
 
     if (ret == ENOENT) {
         /* the user doesn't exist, turn into adding a user */
-        ret = sysdb_store_new_user(domain, name, uid, gid, gecos, homedir,
+        ret = sysdb_store_new_user_pool(tmp_ctx, domain, name, uid, gid, gecos, homedir,
                                    shell, orig_dn, attrs, cache_timeout, now);
     } else {
         /* the user exists, let's just replace attributes when set */
@@ -2827,7 +2902,25 @@ done:
     return ret;
 }
 
-static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
+int sysdb_store_user(struct sss_domain_info *domain,
+                     const char *name,
+                     const char *pwd,
+                     uid_t uid, gid_t gid,
+                     const char *gecos,
+                     const char *homedir,
+                     const char *shell,
+                     const char *orig_dn,
+                     struct sysdb_attrs *attrs,
+                     char **remove_attrs,
+                     uint64_t cache_timeout,
+                     time_t now)
+{
+    return sysdb_store_user_pool(NULL, domain, name, pwd, uid, gid, gecos,
+                                 homedir, shell, orig_dn, attrs, remove_attrs,
+                                 cache_timeout, now);
+}
+
+static errno_t sysdb_store_new_user_pool(TALLOC_CTX *pool, struct sss_domain_info *domain,
                                     const char *name,
                                     uid_t uid,
                                     gid_t gid,
@@ -2841,8 +2934,8 @@ static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
 {
     errno_t ret;
 
-    ret = sysdb_add_user(domain, name, uid, gid, gecos, homedir,
-                         shell, orig_dn, attrs, cache_timeout, now);
+    ret = sysdb_add_user_pool(pool, domain, name, uid, gid, gecos, homedir,
+                              shell, orig_dn, attrs, cache_timeout, now);
     if (ret == EEXIST) {
         /* This may be a user rename. If there is a user with the
             * same UID, remove it and try to add the basic user again
@@ -2860,8 +2953,8 @@ static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
         DEBUG(SSSDBG_TRACE_FUNC,
                 "A user with the same UID [%llu] was removed from the "
                 "cache\n", (unsigned long long) uid);
-        ret = sysdb_add_user(domain, name, uid, gid, gecos, homedir,
-                             shell, orig_dn, attrs, cache_timeout, now);
+        ret = sysdb_add_user_pool(pool, domain, name, uid, gid, gecos, homedir,
+                                  shell, orig_dn, attrs, cache_timeout, now);
         if (ret) {
             DEBUG(SSSDBG_OP_FAILURE,
                     "sysdb_add_user failed (while renaming user) for: "
@@ -2871,6 +2964,23 @@ static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
     }
 
     return EOK;
+}
+
+static errno_t sysdb_store_new_user(struct sss_domain_info *domain,
+                                    const char *name,
+                                    uid_t uid,
+                                    gid_t gid,
+                                    const char *gecos,
+                                    const char *homedir,
+                                    const char *shell,
+                                    const char *orig_dn,
+                                    struct sysdb_attrs *attrs,
+                                    uint64_t cache_timeout,
+                                    time_t now)
+{
+    return sysdb_store_new_user_pool(NULL, domain, name, uid, gid, gecos,
+                                     homedir, shell, orig_dn, attrs,
+                                     cache_timeout, now);
 }
 
 static errno_t sysdb_store_user_attrs(struct sss_domain_info *domain,

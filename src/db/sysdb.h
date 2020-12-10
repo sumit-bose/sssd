@@ -1025,6 +1025,12 @@ int sysdb_set_entry_attr(struct sysdb_ctx *sysdb,
                          struct sysdb_attrs *attrs,
                          int mod_op);
 
+int sysdb_set_entry_attr_pool(TALLOC_CTX *pool,
+                              struct sysdb_ctx *sysdb,
+                              struct ldb_dn *entry_dn,
+                              struct sysdb_attrs *attrs,
+                              int mod_op);
+
 /* User/group invalidation of cache by direct writing to persistent cache
  * WARNING: This function can cause performance issue!!
  * is_user = true --> user invalidation
@@ -1039,6 +1045,12 @@ int sysdb_set_user_attr(struct sss_domain_info *domain,
                         const char *name,
                         struct sysdb_attrs *attrs,
                         int mod_op);
+
+int sysdb_set_user_attr_pool(TALLOC_CTX *pool,
+                             struct sss_domain_info *domain,
+                             const char *name,
+                             struct sysdb_attrs *attrs,
+                             int mod_op);
 
 /* Replace group attrs */
 int sysdb_set_group_attr(struct sss_domain_info *domain,
@@ -1064,6 +1076,14 @@ int sysdb_add_basic_user(struct sss_domain_info *domain,
                          const char *homedir,
                          const char *shell);
 
+int sysdb_add_basic_user_pool(TALLOC_CTX *pool,
+                              struct sss_domain_info *domain,
+                              const char *name,
+                              uid_t uid, gid_t gid,
+                              const char *gecos,
+                              const char *homedir,
+                              const char *shell);
+
 /* Add user (all checks) */
 int sysdb_add_user(struct sss_domain_info *domain,
                    const char *name,
@@ -1075,6 +1095,18 @@ int sysdb_add_user(struct sss_domain_info *domain,
                    struct sysdb_attrs *attrs,
                    int cache_timeout,
                    time_t now);
+
+int sysdb_add_user_pool(TALLOC_CTX *pool,
+                        struct sss_domain_info *domain,
+                        const char *name,
+                        uid_t uid, gid_t gid,
+                        const char *gecos,
+                        const char *homedir,
+                        const char *shell,
+                        const char *orig_dn,
+                        struct sysdb_attrs *attrs,
+                        int cache_timeout,
+                        time_t now);
 
 /* Add group (only basic attrs and w/o checks) */
 int sysdb_add_basic_group(struct sss_domain_info *domain,
@@ -1126,6 +1158,20 @@ int sysdb_store_user(struct sss_domain_info *domain,
                      char **remove_attrs,
                      uint64_t cache_timeout,
                      time_t now);
+
+int sysdb_store_user_pool(TALLOC_CTX *pool,
+                          struct sss_domain_info *domain,
+                          const char *name,
+                          const char *pwd,
+                          uid_t uid, gid_t gid,
+                          const char *gecos,
+                          const char *homedir,
+                          const char *shell,
+                          const char *orig_dn,
+                          struct sysdb_attrs *attrs,
+                          char **remove_attrs,
+                          uint64_t cache_timeout,
+                          time_t now);
 
 int sysdb_store_group(struct sss_domain_info *domain,
                       const char *name,

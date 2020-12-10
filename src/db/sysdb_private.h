@@ -298,9 +298,10 @@ struct ldb_message *sysdb_attrs2msg(TALLOC_CTX *mem_ctx,
  * not necessary), the function returns false (no diff), otherwise
  * the function returns true (a difference exists).
  */
-bool sysdb_entry_attrs_diff(struct sysdb_ctx *sysdb,
-                            struct ldb_dn *entry_dn,
-                            struct sysdb_attrs *attrs,
-                            int mod_op);
+bool sysdb_entry_attrs_diff_pool(TALLOC_CTX *pool,
+                                 struct sysdb_ctx *sysdb,
+                                 struct ldb_dn *entry_dn,
+                                 struct sysdb_attrs *attrs,
+                                 int mod_op);
 
 #endif /* __INT_SYS_DB_H__ */

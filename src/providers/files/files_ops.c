@@ -279,7 +279,7 @@ done:
     return ret;
 }
 
-static errno_t save_file_user(struct files_id_ctx *id_ctx,
+static errno_t save_file_user(TALLOC_CTX *pool, struct files_id_ctx *id_ctx,
                               struct passwd *pw)
 {
     errno_t ret;
@@ -296,7 +296,7 @@ static errno_t save_file_user(struct files_id_ctx *id_ctx,
         return EOK;
     }
 
-    tmp_ctx = talloc_new(NULL);
+    tmp_ctx = talloc_new(pool);
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
@@ -327,7 +327,7 @@ static errno_t save_file_user(struct files_id_ctx *id_ctx,
     }
 
     /* FIXME - optimize later */
-    ret = sysdb_store_user(id_ctx->domain,
+    ret = sysdb_store_user_pool(pool, id_ctx->domain,
                            fqname,
                            pw->pw_passwd,
                            pw->pw_uid,
@@ -455,27 +455,54 @@ errno_t sf_enum_users(struct files_id_ctx *id_ctx,
                       const char *passwd_file)
 {
     errno_t ret;
-    TALLOC_CTX *tmp_ctx = NULL;
+    //TALLOC_CTX *tmp_ctx = NULL;
+    TALLOC_CTX *pool = NULL;
     struct passwd **users = NULL;
 
+    talloc_enable_null_tracking();
+#if 0
     tmp_ctx = talloc_new(NULL);
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
+#endif
+    pool = talloc_pool(id_ctx, 10000*4096);
+    if (pool == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_pool failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
 
-    ret = enum_files_users(tmp_ctx, passwd_file, &users);
+
+    ret = enum_files_users(pool, passwd_file, &users);
     if (ret != EOK) {
         goto done;
     }
 
+    ret = sysdb_transaction_start(id_ctx->domain->sysdb);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "sysdb_transaction_start failed.\n");
+        goto done;
+    }
+
     for (size_t i = 0; users[i]; i++) {
-        ret = save_file_user(id_ctx, users[i]);
+        ret = save_file_user(pool, id_ctx, users[i]);
         if (ret != EOK) {
             DEBUG(SSSDBG_MINOR_FAILURE,
                   "Cannot save user %s: [%d]: %s\n",
                   users[i]->pw_name, ret, sss_strerror(ret));
             continue;
         }
+
+        if (i % 1000 == 0) {
+            talloc_report_full(NULL, get_debug_file());
+        }
+    }
+
+    ret = sysdb_transaction_commit(id_ctx->domain->sysdb);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "sysdb_transaction_commit failed.\n");
+        goto done;
     }
 
     ret = refresh_override_attrs(id_ctx, SYSDB_MEMBER_USER);
@@ -485,9 +512,11 @@ errno_t sf_enum_users(struct files_id_ctx *id_ctx,
               "override values might not be available.\n");
     }
 
+    talloc_disable_null_tracking();
+
     ret = EOK;
 done:
-    talloc_free(tmp_ctx);
+    talloc_free(pool);
     return ret;
 }
 

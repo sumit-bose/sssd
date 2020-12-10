@@ -24,6 +24,7 @@
 #include "config.h"
 
 #include <stdarg.h>
+#include <stdio.h>
 
 #ifdef HAVE_FUNCTION_ATTRIBUTE_FORMAT
 #define SSS_ATTRIBUTE_PRINTF(a1, a2) __attribute__((format (printf, a1, a2)))
@@ -68,6 +69,7 @@ void sss_debug_fn(const char *file,
 int debug_convert_old_level(int old_level);
 errno_t set_debug_file_from_fd(const int fd);
 int get_fd_from_debug_file(void);
+FILE *get_debug_file(void);
 
 #define SSS_DOM_ENV           "_SSS_DOM"
 
