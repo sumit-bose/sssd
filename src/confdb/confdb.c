@@ -2061,7 +2061,8 @@ done:
 }
 
 static int confdb_ensure_files_domain(struct confdb_ctx *cdb,
-                                      const char *implicit_files_dom_name)
+                                      const char *implicit_files_dom_name,
+                                      bool *implicit_files_explicitly_disabled)
 {
 #ifdef ADD_FILES_DOMAIN
     const bool default_enable_files = true;
@@ -2085,6 +2086,9 @@ static int confdb_ensure_files_domain(struct confdb_ctx *cdb,
 
     if (enable_files == false) {
         DEBUG(SSSDBG_CONF_SETTINGS, "The implicit files domain is disabled\n");
+        if (default_enable_files) {
+            *implicit_files_explicitly_disabled = true;
+        }
         return EOK;
     }
 
@@ -2288,13 +2292,15 @@ int confdb_expand_app_domains(struct confdb_ctx *cdb)
     char **domlist;
     TALLOC_CTX *tmp_ctx;
     struct ldb_result *app_domain = NULL;
+    bool implicit_files_explicitly_disabled = false;
 
     tmp_ctx = talloc_new(NULL);
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
 
-    ret = confdb_ensure_files_domain(cdb, IMPLICIT_FILES_DOMAIN_NAME);
+    ret = confdb_ensure_files_domain(cdb, IMPLICIT_FILES_DOMAIN_NAME,
+                                     &implicit_files_explicitly_disabled);
     if (ret != EOK) {
         DEBUG(SSSDBG_MINOR_FAILURE,
               "Cannot add the implicit files domain [%d]: %s\n",
@@ -2307,7 +2313,14 @@ int confdb_expand_app_domains(struct confdb_ctx *cdb)
                                     CONFDB_MONITOR_ACTIVE_DOMAINS,
                                     &domlist);
     if (ret == ENOENT) {
-        DEBUG(SSSDBG_FATAL_FAILURE, "No domains configured, fatal error!\n");
+        if (implicit_files_explicitly_disabled) {
+            DEBUG(SSSDBG_FATAL_FAILURE,
+                  "No domains configured and implicit files domain explilitly "
+                  "disabled, nothing to do!\n");
+           ret = ERR_SSSD_NOT_RUNNING;
+        } else {
+            DEBUG(SSSDBG_FATAL_FAILURE, "No domains configured, fatal error!\n");
+        }
         goto done;
     } else if (ret != EOK ) {
         DEBUG(SSSDBG_FATAL_FAILURE, "Fatal error retrieving domains list!\n");

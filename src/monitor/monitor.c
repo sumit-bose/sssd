@@ -985,7 +985,9 @@ static int get_monitor_config(struct mt_ctx *ctx)
     }
 
     ret = confdb_expand_app_domains(ctx->cdb);
-    if (ret != EOK) {
+    if (ret == ERR_SSSD_NOT_RUNNING) {
+        return ret;
+    } else if (ret != EOK) {
         DEBUG(SSSDBG_FATAL_FAILURE, "Failed to expand application domains\n");
         /* This must not be fatal so that SSSD keeps running and lets
          * admin correct the error.
@@ -2583,6 +2585,12 @@ int main(int argc, const char *argv[])
                              opt_genconf_section, &monitor);
     if (ret != EOK) {
         switch (ret) {
+        case ERR_SSSD_NOT_RUNNING:
+            DEBUG(SSSDBG_FATAL_FAILURE,
+                 "SSSD explicitly disabled, nothing to do.\n");
+            sss_log(SSS_LOG_NOTICE,
+                 "SSSD explicitly disabled, nothing to do.\n");
+            return 0;
         case EPERM:
         case EACCES:
             DEBUG(SSSDBG_FATAL_FAILURE,
