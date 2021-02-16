@@ -45,6 +45,7 @@
 #define AD_AT_TRUST_TYPE    "trustType"
 #define AD_AT_TRUST_PARTNER "trustPartner"
 #define AD_AT_TRUST_ATTRS   "trustAttributes"
+#define AD_AT_DOMAIN_NAME   "cn"
 
 /* trustType=2 denotes uplevel (NT5 and later) trusted domains. See
  * http://msdn.microsoft.com/en-us/library/windows/desktop/ms680342%28v=vs.85%29.aspx
@@ -56,7 +57,6 @@
  */
 #define SLAVE_DOMAIN_FILTER_BASE "(objectclass=trustedDomain)(trustType=2)(!(msDS-TrustForestTrustInfo=*))"
 #define SLAVE_DOMAIN_FILTER      "(&"SLAVE_DOMAIN_FILTER_BASE")"
-#define FOREST_ROOT_FILTER_FMT   "(&"SLAVE_DOMAIN_FILTER_BASE"(cn=%s))"
 
 /* Attributes of schema objects. See e.g.
  * https://docs.microsoft.com/en-us/windows/desktop/AD/characteristics-of-attributes
@@ -655,7 +655,6 @@ static errno_t ad_subdomains_refresh(struct be_ctx *be_ctx,
                                      time_t *_last_refreshed,
                                      bool *_changes)
 {
-    struct sdap_domain *sdom;
     struct sss_domain_info *domain;
     struct sss_domain_info *dom;
     bool handled[num_subdomains];
@@ -706,40 +705,16 @@ static errno_t ad_subdomains_refresh(struct be_ctx *be_ctx,
         }
 
         if (c >= num_subdomains) {
-            /* ok this subdomain does not exist anymore, let's clean up */
-            sss_domain_set_state(dom, DOM_DISABLED);
-
-            /* Just disable the forest root but do not remove sdap data */
-            if (sss_domain_is_forest_root(dom)) {
-                DEBUG(SSSDBG_TRACE_ALL,
-                      "Skipping removal of forest root sdap data.\n");
-
-                ret = sysdb_domain_set_enabled(dom->sysdb, dom->name, false);
-                if (ret != EOK && ret != ENOENT) {
-                    DEBUG(SSSDBG_OP_FAILURE, "Unable to disable domain %s "
-                          "[%d]: %s\n", dom->name, ret, sss_strerror(ret));
-                    goto done;
-                }
-                continue;
-            }
-
-            ret = sysdb_subdomain_delete(dom->sysdb, dom->name);
-            if (ret != EOK) {
-                goto done;
-            }
-
-            sdom = sdap_domain_get(opts, dom);
-            if (sdom == NULL) {
-                DEBUG(SSSDBG_CRIT_FAILURE, "BUG: Domain does not exist?\n");
-                continue;
-            }
-
-            /* Remove the subdomain from the list of LDAP domains */
-            sdap_domain_remove(opts, dom);
-
-            /* terminate all requests for this subdomain so we can free it */
-            dp_terminate_domain_requests(be_ctx->provider, dom->name);
-            talloc_zfree(sdom);
+            DEBUG(SSSDBG_CONF_SETTINGS, "Domain [%s] not in current list.\n",
+                                        dom->name);
+            /* Previously the domain was removed here or disabled in the case
+             * of the forest root domain. Since the forest root might not have
+             * trustedDomain objects for each domain in the forest, especially
+             * e.g. for child-domains of child-domains, we cannot reliable say
+             * if a domain is still present or not.
+             * Maybe it would work to check the crossRef objects in
+             * CN=Partitions,CN=Configuration as well to understand if a
+             * domain is still known in the forest or not. */
         } else {
             /* ok let's try to update it */
             ret = ad_subdom_enumerates(domain, subdomains[c], &enumerate);
@@ -1307,10 +1282,9 @@ ad_get_root_domain_send(TALLOC_CTX *mem_ctx,
     struct tevent_req *req;
     struct sdap_options *opts;
     errno_t ret;
-    const char *filter;
     const char *attrs[] = { AD_AT_FLATNAME, AD_AT_TRUST_PARTNER,
                             AD_AT_SID, AD_AT_TRUST_TYPE,
-                            AD_AT_TRUST_ATTRS, NULL };
+                            AD_AT_TRUST_ATTRS, AD_AT_DOMAIN_NAME, NULL };
 
     req = tevent_req_create(mem_ctx, &state, struct ad_get_root_domain_state);
     if (req == NULL) {
@@ -1335,15 +1309,10 @@ ad_get_root_domain_send(TALLOC_CTX *mem_ctx,
     state->domain = domain;
     state->forest = forest;
 
-    filter = talloc_asprintf(state, FOREST_ROOT_FILTER_FMT, forest);
-    if (filter == NULL) {
-        ret = ENOMEM;
-        goto immediately;
-    }
-
     subreq = sdap_search_bases_return_first_send(state, ev, opts, sh,
                                                  opts->sdom->search_bases,
-                                                 NULL, false, 0, filter, attrs,
+                                                 NULL, false, 0,
+                                                 SLAVE_DOMAIN_FILTER, attrs,
                                                  NULL);
     if (subreq == NULL) {
         ret = ENOMEM;
@@ -1365,11 +1334,33 @@ immediately:
     return req;
 }
 
+static struct sysdb_attrs *find_domain(size_t count, struct sysdb_attrs **reply,
+                                       const char *dom_name)
+{
+    size_t c;
+    const char *name;
+    int ret;
+
+    for (c = 0; c < count; c++) {
+        ret = sysdb_attrs_get_string(reply[c], AD_AT_DOMAIN_NAME, &name);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to find domain name, skipping");
+            continue;
+        }
+        if (strcasecmp(name, dom_name) == 0) {
+            return reply[c];
+        }
+    }
+
+    return NULL;
+}
+
 static void ad_get_root_domain_done(struct tevent_req *subreq)
 {
     struct tevent_req *req;
     struct ad_get_root_domain_state *state;
     errno_t ret;
+    bool has_changes = false;
 
     req = tevent_req_callback_data(subreq, struct tevent_req);
     state = tevent_req_data(req, struct ad_get_root_domain_state);
@@ -1384,7 +1375,37 @@ static void ad_get_root_domain_done(struct tevent_req *subreq)
         goto done;
     }
 
-    if (state->reply_count == 0) {
+    find_domain(state->reply_count, state->reply, state->forest);
+
+    if (state->reply_count == 0
+            || find_domain(state->reply_count, state->reply,
+                           state->forest) == NULL) {
+
+        if (state->reply_count > 0) {
+            /* refresh the other domains we have found before checking forest
+             * root */
+            ret = ad_subdomains_refresh(state->be_ctx, state->idmap_ctx,
+                                        state->opts,
+                                        state->reply, state->reply_count, false,
+                                        &state->sd_ctx->last_refreshed,
+                                        &has_changes);
+            if (ret != EOK) {
+                DEBUG(SSSDBG_OP_FAILURE,
+                      "ad_subdomains_refresh failed [%d]: %s\n",
+                      ret, sss_strerror(ret));
+                goto done;
+            }
+
+            if (has_changes) {
+                ret = ad_subdom_reinit(state->sd_ctx);
+                if (ret != EOK) {
+                    DEBUG(SSSDBG_OP_FAILURE,
+                          "Could not reinitialize subdomains\n");
+                    goto done;
+                }
+            }
+        }
+
         DEBUG(SSSDBG_OP_FAILURE,
               "No information provided for root domain, trying directly.\n");
         subreq = ad_check_domain_send(state, state->ev, state->be_ctx,
@@ -1397,11 +1418,6 @@ static void ad_get_root_domain_done(struct tevent_req *subreq)
         }
         tevent_req_set_callback(subreq, ad_check_root_domain_done, req);
         return;
-    } else if (state->reply_count > 1) {
-        DEBUG(SSSDBG_CRIT_FAILURE, "Multiple results for root domain search, "
-              "domain list might be incomplete!\n");
-        ret = ERR_MALFORMED_ENTRY;
-        goto done;
     }
 
     ret = ad_get_root_domain_refresh(state);
@@ -1519,7 +1535,7 @@ ad_get_root_domain_refresh(struct ad_get_root_domain_state *state)
     errno_t ret;
 
     ret = ad_subdomains_refresh(state->be_ctx, state->idmap_ctx, state->opts,
-                                state->reply, state->reply_count, true,
+                                state->reply, state->reply_count, false,
                                 &state->sd_ctx->last_refreshed,
                                 &has_changes);
     if (ret != EOK) {
@@ -1536,8 +1552,9 @@ ad_get_root_domain_refresh(struct ad_get_root_domain_state *state)
         }
     }
 
-    state->root_domain_attrs = state->reply[0];
-    root_domain = ads_get_root_domain(state->be_ctx, state->reply[0]);
+    state->root_domain_attrs = find_domain(state->reply_count, state->reply,
+                                           state->forest);
+    root_domain = ads_get_root_domain(state->be_ctx, state->root_domain_attrs);
     if (root_domain == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "Could not find the root domain\n");
         ret = EFAULT;
