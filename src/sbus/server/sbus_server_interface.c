@@ -108,7 +108,7 @@ sbus_server_bus_request_name(TALLOC_CTX *mem_ctx,
     struct sbus_connection *conn;
     errno_t ret;
 
-    DEBUG(SSSDBG_TRACE_FUNC, "Requesting name: %s\n", name);
+    DEBUG(SSSDBG_TRACE_FUNC, "Requesting name: %s %p\n", name, sbus_req->conn);
 
     if (name[0] == ':') {
         DEBUG(SSSDBG_OP_FAILURE, "Can not assign unique name: %s\n", name);

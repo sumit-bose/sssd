@@ -156,6 +156,7 @@ static errno_t proxy_init_auth_ctx(TALLOC_CTX *mem_ctx,
     auth_ctx->be = be_ctx;
     auth_ctx->timeout_ms = SSS_CLI_SOCKET_TIMEOUT / 4;
     auth_ctx->next_id = 1;
+    auth_ctx->sbus_server = dp_sbus_server(be_ctx->provider);
 
     ret = proxy_auth_conf(auth_ctx, be_ctx, &auth_ctx->pam_target);
     if (ret != EOK) {

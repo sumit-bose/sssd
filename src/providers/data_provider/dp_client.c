@@ -24,6 +24,7 @@
 #include "providers/data_provider/dp.h"
 #include "sbus/sbus_request.h"
 #include "util/util.h"
+#include "sbus/sbus_private.h"
 
 struct dp_client {
     struct data_provider *provider;
@@ -76,10 +77,12 @@ static int dp_client_destructor(struct dp_client *dp_cli)
             break;
         }
     }
-
-    if (client == DP_CLIENT_SENTINEL) {
+    if (strncasecmp(dp_cli->name, "sssd.proxy_",11) == 0) {
+            DEBUG(SSSDBG_TRACE_FUNC, "Removed %s client\n", dp_cli->name);
+    } else if (client == DP_CLIENT_SENTINEL) {
         DEBUG(SSSDBG_CRIT_FAILURE, "Unknown client removed...\n");
     }
+            DEBUG(SSSDBG_TRACE_FUNC, "Not removed %s client\n", dp_cli->name);
 
     return 0;
 }
@@ -117,7 +120,8 @@ dp_client_register(TALLOC_CTX *mem_ctx,
         }
     }
 
-    if (client == DP_CLIENT_SENTINEL) {
+    if (client == DP_CLIENT_SENTINEL
+            && strncasecmp(name, "sssd.proxy_",11) != 0) {
         DEBUG(SSSDBG_CRIT_FAILURE, "Unknown client! [%s]\n", name);
         return ENOENT;
     }

@@ -175,8 +175,8 @@ sbus_method_handler(struct sbus_connection *conn,
     const char *error_msg;
     errno_t ret;
 
-    DEBUG(SSSDBG_TRACE_INTERNAL, "Received D-Bus method %s.%s on %s\n",
-          meta->interface, meta->member, meta->path);
+    DEBUG(SSSDBG_TRACE_INTERNAL, "Received D-Bus method %s.%s on %s conn %p\n",
+          meta->interface, meta->member, meta->path, conn);
 
     /* Mark this connection as active. */
     sbus_connection_mark_active(conn);

@@ -63,6 +63,7 @@ struct proxy_auth_ctx {
     uint32_t next_id;
     hash_table_t *request_table;
     int timeout_ms;
+    struct sbus_server *sbus_server;
 };
 
 struct proxy_resolver_ctx {

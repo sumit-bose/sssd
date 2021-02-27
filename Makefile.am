@@ -1069,7 +1069,6 @@ EXTRA_DIST += \
 pkglib_LTLIBRARIES += libsss_sbus.la
 libsss_sbus_la_SOURCES = \
     src/util/check_and_open.c \
-    src/util/debug.c \
     src/util/sss_ptr_hash.c \
     src/util/sss_ptr_list.c \
     src/util/sss_utf8.c \
@@ -1132,7 +1131,6 @@ libsss_sbus_la_LDFLAGS = \
 
 pkglib_LTLIBRARIES += libsss_sbus_sync.la
 libsss_sbus_sync_la_SOURCES = \
-    src/util/debug.c \
     src/util/sss_utf8.c \
     src/util/util.c \
     src/util/util_errors.c \

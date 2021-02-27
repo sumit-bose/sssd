@@ -54,6 +54,7 @@ struct pc_ctx {
     const char *conf_path;
     struct sbus_connection *mon_conn;
     struct sbus_connection *conn;
+    char *sbus_busname;
     const char *pam_target;
     uint32_t id;
 };
@@ -330,6 +331,7 @@ pc_pam_handler(TALLOC_CTX *mem_ctx,
     return ret;
 }
 
+static void proxy_cli_dp_init_done(struct tevent_req *subreq);
 static void proxy_cli_init_done(struct tevent_req *subreq);
 
 static errno_t
@@ -338,7 +340,7 @@ proxy_cli_init(struct pc_ctx *ctx)
     TALLOC_CTX *tmp_ctx;
     struct tevent_req *subreq;
     char *sbus_address;
-    char *sbus_busname;
+    //char *sbus_busname;
     char *sbus_cliname;
     errno_t ret;
 
@@ -368,8 +370,8 @@ proxy_cli_init(struct pc_ctx *ctx)
         goto done;
     }
 
-    sbus_busname = sss_iface_domain_bus(tmp_ctx, ctx->domain);
-    if (sbus_busname == NULL) {
+    ctx->sbus_busname = sss_iface_domain_bus(ctx, ctx->domain);
+    if (ctx->sbus_busname == NULL) {
         ret = ENOMEM;
         goto done;
     }
@@ -397,15 +399,18 @@ proxy_cli_init(struct pc_ctx *ctx)
     DEBUG(SSSDBG_TRACE_FUNC, "Sending ID to Proxy Backend: (%"PRIu32")\n",
           ctx->id);
 
-    subreq = sbus_call_proxy_client_Register_send(ctx, ctx->conn, sbus_busname,
-                                                  SSS_BUS_PATH, ctx->id);
+    //subreq = sbus_call_proxy_client_Register_send(ctx, ctx->conn, sbus_busname,
+    //                                              SSS_BUS_PATH, ctx->id);
+    subreq = sbus_call_dp_client_Register_send(ctx, ctx->conn,
+                                               ctx->sbus_busname, SSS_BUS_PATH,
+                                               sbus_cliname);
     if (subreq == NULL) {
         DEBUG(SSSDBG_CRIT_FAILURE, "Unable to create subrequest!\n");
         ret = ENOMEM;
         goto done;
     }
 
-    tevent_req_set_callback(subreq, proxy_cli_init_done, NULL);
+    tevent_req_set_callback(subreq, proxy_cli_dp_init_done, ctx);
 
     ret = EOK;
 
@@ -413,6 +418,34 @@ done:
     talloc_free(tmp_ctx);
 
     return ret;
+}
+
+static void proxy_cli_dp_init_done(struct tevent_req *subreq)
+{
+    errno_t ret;
+    struct pc_ctx *ctx = tevent_req_callback_data(subreq, struct pc_ctx);
+
+    //ret = sbus_call_proxy_client_Register_recv(subreq);
+    ret = sbus_call_dp_client_Register_recv(subreq);
+    talloc_zfree(subreq);
+
+    if (ret != EOK) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Unable to register with proxy provider "
+              "[%d]: %s\n", ret, sss_strerror(ret));
+        return;
+    }
+
+    DEBUG(SSSDBG_TRACE_FUNC, "Got id ack from proxy child\n");
+
+    subreq = sbus_call_proxy_client_Register_send(ctx, ctx->conn,
+                                                  ctx->sbus_busname,
+                                                  SSS_BUS_PATH, ctx->id);
+    if (subreq == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Unable to create subrequest!\n");
+        return;
+    }
+
+    tevent_req_set_callback(subreq, proxy_cli_init_done, NULL);
 }
 
 static void proxy_cli_init_done(struct tevent_req *subreq)

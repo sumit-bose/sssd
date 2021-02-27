@@ -502,6 +502,7 @@ static void remove_sige(struct tevent_context *ev,
                         struct tevent_immediate *imm,
                         void *pvt)
 {
+    talloc_zfree(imm);
     talloc_free(pvt);
 }
 
@@ -661,6 +662,8 @@ static void run_proxy_child_queue(struct tevent_context *ev,
     struct tevent_req *req;
     struct tevent_req *subreq;
     struct proxy_child_ctx *state;
+
+    talloc_zfree(imm);
 
     auth_ctx = talloc_get_type(pvt, struct proxy_auth_ctx);
 

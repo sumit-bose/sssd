@@ -45,9 +45,21 @@ proxy_client_register(TALLOC_CTX *mem_ctx,
     hash_value_t value;
     hash_key_t key;
     int hret;
+    struct sbus_connection *cli_conn;
+
+    DEBUG(SSSDBG_TRACE_ALL, "ProxyClientRegister on connection %p\n",
+                            sbus_req->conn);
+    cli_conn = sbus_server_find_connection(auth_ctx->sbus_server,
+                                           sbus_req->sender->name);
+    if (cli_conn == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Unknown client: %s\n",
+              sbus_req->sender->name);
+        return ENOENT;
+    }
+    DEBUG(SSSDBG_TRACE_ALL, "client connection %p\n", cli_conn);
 
     /* When connection is lost we also free the client. */
-    proxy_cli = talloc_zero(sbus_req->conn, struct proxy_client);
+    proxy_cli = talloc_zero(cli_conn, struct proxy_client);
     if (proxy_cli == NULL) {
         return ENOMEM;
     }
