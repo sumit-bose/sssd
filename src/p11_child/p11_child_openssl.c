@@ -46,6 +46,7 @@ struct p11_ctx {
     struct cert_verify_opts *cert_verify_opts;
 };
 
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
 static OCSP_RESPONSE *query_responder(BIO *cbio, const char *host,
                                       const char *path,
                                       OCSP_REQUEST *req, int req_timeout)
@@ -131,6 +132,21 @@ static OCSP_RESPONSE *query_responder(BIO *cbio, const char *host,
 
     return rsp;
 }
+#else
+/* Basic TLS callback from man 3 OSSL_HTTP_transfer */
+BIO *http_tls_cb(BIO *hbio, void *arg, int connect, int detail)
+{
+    if (connect && detail) { /* connecting with TLS */
+        SSL_CTX *ctx = (SSL_CTX *)arg;
+        BIO *sbio = BIO_new_ssl(ctx, 1);
+
+        hbio = sbio != NULL ? BIO_push(sbio, hbio) : NULL;
+    } else if (!connect && !detail) { /* disconnecting after error */
+        /* optionally add diagnostics here */
+    }
+    return hbio;
+}
+#endif
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 #define TLS_client_method SSLv23_client_method
@@ -146,9 +162,10 @@ OCSP_RESPONSE *process_responder(OCSP_REQUEST *req,
                                  char *port, int use_ssl,
                                  int req_timeout)
 {
-    BIO *cbio = NULL;
     SSL_CTX *ctx = NULL;
     OCSP_RESPONSE *resp = NULL;
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    BIO *cbio = NULL;
 
     cbio = BIO_new_connect(host);
     if (cbio == NULL) {
@@ -176,6 +193,51 @@ OCSP_RESPONSE *process_responder(OCSP_REQUEST *req,
 
  end:
     BIO_free_all(cbio);
+
+#else /* OpenSSL 3.0 */
+
+
+    BIO *resp_mem;
+    BIO *req_mem;
+
+    if (use_ssl == 1) {
+        ctx = SSL_CTX_new(TLS_client_method());
+        if (ctx == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Error creating SSL context.\n");
+            return NULL;
+        }
+    }
+
+    req_mem = ASN1_item_i2d_mem_bio(ASN1_ITEM_rptr(OCSP_REQUEST),
+                                    (ASN1_VALUE *) req);
+    if (req_mem == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to serialize OCSP request.\n");
+        return NULL;
+    }
+
+    resp_mem = OSSL_HTTP_transfer(NULL, host, port, path, use_ssl,
+                                  NULL, NULL, NULL, NULL,
+                                  http_tls_cb, ctx, 0, NULL,
+                                  "application/ocsp-request", req_mem,
+                                  "application/ocsp-response", 1,
+                                  OSSL_HTTP_DEFAULT_MAX_RESP_LEN, req_timeout,
+                                  0);
+    BIO_free(req_mem);
+    if (resp_mem == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "OCSP request failed.\n");
+        return NULL;
+    }
+
+    resp = (OCSP_RESPONSE *) ASN1_item_d2i_bio(ASN1_ITEM_rptr(OCSP_RESPONSE),
+                                               resp_mem, NULL);
+    BIO_free(resp_mem);
+
+    if (resp_mem == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to deserialize OCSP response.\n");
+        return NULL;
+    }
+#endif
+
     SSL_CTX_free(ctx);
     return resp;
 }
