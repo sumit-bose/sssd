@@ -124,6 +124,7 @@ int pack_message_v3(struct pam_items *pi, size_t *size, uint8_t **buffer)
     len += pi->pam_newauthtok != NULL ?
                 3*sizeof(uint32_t) + pi->pam_newauthtok_size : 0;
     len += 3*sizeof(uint32_t); /* cli_pid */
+    len += 3*sizeof(uint32_t); /* child_pid */
     len += *pi->requested_domains != '\0' ?
                 2*sizeof(uint32_t) + pi->requested_domains_size : 0;
     len += 3*sizeof(uint32_t); /* flags */
@@ -156,6 +157,9 @@ int pack_message_v3(struct pam_items *pi, size_t *size, uint8_t **buffer)
                           &buf[rp]);
 
     rp += add_uint32_t_item(SSS_PAM_ITEM_CLI_PID, (uint32_t) pi->cli_pid,
+                            &buf[rp]);
+
+    rp += add_uint32_t_item(SSS_PAM_ITEM_CHILD_PID, (uint32_t) pi->child_pid,
                             &buf[rp]);
 
     rp += add_authtok_item(SSS_PAM_ITEM_AUTHTOK, pi->pam_authtok_type,
