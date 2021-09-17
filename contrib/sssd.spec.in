@@ -858,6 +858,8 @@ done
 %dir %{_libdir}/%{name}
 %dir %{_libdir}/%{name}/modules
 %{_libdir}/%{name}/modules/sssd_krb5_localauth_plugin.so
+%{_libdir}/%{name}/modules/sssd_krb5_idp_plugin.so
+%{_datadir}/sssd/krb5-snippets/sssd_enable_idp
 %{_mandir}/man8/pam_sss.8*
 %{_mandir}/man8/pam_sss_gss.8*
 %{_mandir}/man8/sssd_krb5_locator_plugin.8*
