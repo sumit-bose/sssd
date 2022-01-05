@@ -38,6 +38,7 @@
 
 struct devicecode_ctx {
     bool libcurl_debug;
+    char *ca_db;
     char *device_authorization_endpoint;
     char *token_endpoint;
     char *userinfo_endpoint;
@@ -211,6 +212,58 @@ done:
     return ret;
 }
 
+errno_t set_endpoints(struct devicecode_ctx *dc_ctx,
+                      const char *device_auth_endpoint,
+                      const char *token_endpoint,
+                      const char *userinfo_endpoint,
+                      const char *jwks_uri,
+                      const char *scope)
+{
+    int ret;
+
+    dc_ctx->device_authorization_endpoint = talloc_strdup(dc_ctx,
+                                                          device_auth_endpoint);
+    if (dc_ctx->device_authorization_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Missing device_authorization_endpoint.\n");
+        ret = EINVAL;
+        goto done;
+    }
+    dc_ctx->token_endpoint = talloc_strdup(dc_ctx, token_endpoint);
+    if (dc_ctx->token_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Missing token_endpoint.\n");
+        ret = EINVAL;
+        goto done;
+    }
+    dc_ctx->userinfo_endpoint = talloc_strdup(dc_ctx,userinfo_endpoint);
+    if (dc_ctx->userinfo_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Missing userinfo_endpoint.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    if (jwks_uri != NULL) {
+        dc_ctx->jwks_uri = talloc_strdup(dc_ctx, jwks_uri);
+        if (dc_ctx->jwks_uri == NULL) {
+            DEBUG(SSSDBG_CRIT_FAILURE, "Missing jwks_uri.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+    }
+
+    if (scope != NULL) {
+        dc_ctx->scope = talloc_strdup(dc_ctx, scope);
+        if (dc_ctx->scope == NULL) {
+            DEBUG(SSSDBG_CRIT_FAILURE, "Missing scopes.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+    }
+
+    ret = EOK;
+done:
+    return ret;
+}
+
 size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     size_t realsize = size * nmemb;
@@ -274,9 +327,14 @@ errno_t set_http_opts(CURL *curl_ctx, struct devicecode_ctx *dc_ctx,
         goto done;
     }
 
-    /* FIXME */
-    curl_easy_setopt(curl_ctx, CURLOPT_SSL_VERIFYPEER, 0L);
-
+    if (dc_ctx->ca_db != NULL) {
+        res = curl_easy_setopt(curl_ctx, CURLOPT_CAINFO, dc_ctx->ca_db);
+        if (res != CURLE_OK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to set CA DB path.\n");
+            ret = EIO;
+            goto done;
+        }
+    }
 
     res = curl_easy_setopt(curl_ctx, CURLOPT_URL, uri);
     if (res != CURLE_OK) {
@@ -883,7 +941,13 @@ int main(int argc, const char *argv[])
     char *issuer_url = NULL;
     char *issuer = NULL;
     char *client_id = NULL;
+    char *device_auth_endpoint = NULL;
+    char *token_endpoint = NULL;
+    char *userinfo_endpoint = NULL;
+    char *jwks_uri = NULL;
+    char *scope = NULL;
     char *client_secret = NULL;
+    char *ca_db = NULL;
     bool libcurl_debug = false;
     bool get_device_code = false;
     bool get_access_token = false;
@@ -897,8 +961,14 @@ int main(int argc, const char *argv[])
         {"get-access-token", 0, POPT_ARG_NONE, NULL, 'b', _("Wait for access token"), NULL},
         {"issuer-url", 0, POPT_ARG_STRING, &issuer_url, 0, _("URL of Issuer IdP"), NULL},
         {"issuer", 0, POPT_ARG_STRING, &issuer, 0, _("Name of an IdP from the issuer file"), NULL},
+        {"device-auth-endpoint", 0, POPT_ARG_STRING, &device_auth_endpoint, 0, _("Device authorization endpoint of the IdP"), NULL},
+        {"token-endpoint", 0, POPT_ARG_STRING, &token_endpoint, 0, _("Token endpoint of the IdP"), NULL},
+        {"userinfo-endpoint", 0, POPT_ARG_STRING, &userinfo_endpoint, 0, _("Userinfo endpoint of the IdP"), NULL},
+        {"jwks-uri", 0, POPT_ARG_STRING, &jwks_uri, 0, _("JWKS URI of the IdP"), NULL},
+        {"scope", 0, POPT_ARG_STRING, &scope, 0, _("Supported scope of the IdP to get userinfo"), NULL},
         {"client-id", 0, POPT_ARG_STRING, &client_id, 0, _("Client ID"), NULL},
         {"client-secret", 0, POPT_ARG_STRING, &client_secret, 0, _("Client secret (if needed)"), NULL},
+        {"ca-db", 0, POPT_ARG_STRING, &ca_db, 0, _("Path to PEM file with CA certificates"), NULL},
         {"libcurl-debug", 0, POPT_ARG_NONE, NULL, 'c', _("Enable libcurl debug output"), NULL},
         SSSD_LOGGER_OPTS
         POPT_TABLEEND
@@ -953,9 +1023,22 @@ int main(int argc, const char *argv[])
         _exit(-1);
     }
 
-
-    if (issuer_url == NULL && issuer == NULL) {
-        fprintf(stderr, "\n--issuer_url or --issuer must be given.\n\n");
+    if ((issuer_url != NULL && (issuer != NULL
+                                || device_auth_endpoint != NULL
+                                || token_endpoint != NULL))
+        || (issuer != NULL && (issuer_url != NULL
+                                || device_auth_endpoint != NULL
+                                || token_endpoint != NULL))
+        || (device_auth_endpoint != NULL && token_endpoint != NULL
+                           && (issuer_url != NULL || issuer != NULL))
+        || (issuer_url == NULL && issuer == NULL
+                && ((device_auth_endpoint != NULL && token_endpoint == NULL)
+                   || (device_auth_endpoint == NULL && token_endpoint != NULL)))
+        || (issuer_url == NULL && issuer == NULL
+                && (device_auth_endpoint == NULL || token_endpoint == NULL))) {
+        fprintf(stderr, "\n--issuer-url or --issuer or --device-auth-endpoint "
+                        "together with --token-endpoint are mutually exclusive "
+                        "but one variant must be given.\n\n");
         poptPrintUsage(pc, stderr, 0);
         poptFreeContext(pc);
         _exit(-1);
@@ -1012,6 +1095,14 @@ int main(int argc, const char *argv[])
         goto fail;
     }
     dc_ctx->libcurl_debug = libcurl_debug;
+    if (ca_db != NULL) {
+        dc_ctx->ca_db = talloc_strdup(dc_ctx, ca_db);
+        if (dc_ctx->ca_db == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to copy CA DB path.\n");
+            ret = ENOMEM;
+            goto fail;
+        }
+    }
 
     if (issuer_url != NULL) {
         ret = get_openid_configuration(dc_ctx, issuer_url);
@@ -1029,6 +1120,13 @@ int main(int argc, const char *argv[])
         ret = get_issuer(dc_ctx, issuer);
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to get issuer configuration.\n");
+            goto fail;
+        }
+    } else if (device_auth_endpoint != NULL && token_endpoint != NULL) {
+        ret = set_endpoints(dc_ctx, device_auth_endpoint, token_endpoint,
+                            userinfo_endpoint, jwks_uri, scope);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to set endpoints.\n");
             goto fail;
         }
     } else {
