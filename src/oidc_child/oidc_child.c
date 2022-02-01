@@ -241,7 +241,7 @@ errno_t set_endpoints(struct devicecode_ctx *dc_ctx,
         goto done;
     }
 
-    if (jwks_uri != NULL) {
+    if (jwks_uri != NULL && *jwks_uri != '\0') {
         dc_ctx->jwks_uri = talloc_strdup(dc_ctx, jwks_uri);
         if (dc_ctx->jwks_uri == NULL) {
             DEBUG(SSSDBG_CRIT_FAILURE, "Missing jwks_uri.\n");
@@ -250,7 +250,7 @@ errno_t set_endpoints(struct devicecode_ctx *dc_ctx,
         }
     }
 
-    if (scope != NULL) {
+    if (scope != NULL && *scope != '\0') {
         dc_ctx->scope = talloc_strdup(dc_ctx, scope);
         if (dc_ctx->scope == NULL) {
             DEBUG(SSSDBG_CRIT_FAILURE, "Missing scopes.\n");
@@ -758,6 +758,8 @@ done:
     return ret;
 }
 
+#define DEFAULT_SCOPE "user"
+
 errno_t get_devicecode(TALLOC_CTX *mem_ctx,
                        struct devicecode_ctx *dc_data, const char *client_id)
 {
@@ -765,9 +767,10 @@ errno_t get_devicecode(TALLOC_CTX *mem_ctx,
 
     char *post_data = NULL;
 
-    post_data  = talloc_asprintf(mem_ctx,
-                   "client_id=%s&scope=%s",
-                                 client_id, dc_data->scope);
+    post_data  = talloc_asprintf(mem_ctx, "client_id=%s&scope=%s",
+                                 client_id,
+                                 dc_data->scope != NULL ? dc_data->scope
+                                                        : DEFAULT_SCOPE);
     if (post_data == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "Failed to allocate memory for POST data.\n");
         return ENOMEM;
@@ -927,6 +930,71 @@ errno_t read_device_code_from_stdin(struct devicecode_ctx *dc_ctx)
     return EOK;
 }
 
+static const char *get_id_string(TALLOC_CTX *mem_ctx, json_t *id_object)
+{
+    switch (json_typeof(id_object)) {
+    case JSON_STRING:
+        return json_string_value(id_object);
+        break;
+    case JSON_INTEGER:
+        return talloc_asprintf(mem_ctx, "%" JSON_INTEGER_FORMAT,
+                                        json_integer_value(id_object));
+        break;
+    default:
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Unexpected user indentifier type.\n");
+    }
+
+    return NULL;
+}
+
+static const char *get_user_identifier(TALLOC_CTX *mem_ctx, json_t *userinfo,
+                                      const char *user_identifier_attr)
+{
+    json_t *id_object = NULL;
+    const char *user_identifier = NULL;
+
+    if (user_identifier_attr != NULL) {
+        id_object = json_object_get(userinfo, user_identifier_attr);
+        if (id_object != NULL) {
+            user_identifier = get_id_string(mem_ctx, id_object);
+            if (user_identifier == NULL) {
+                DEBUG(SSSDBG_OP_FAILURE,
+                      "Failed to get user identifier string.\n");
+            }
+        } else {
+            DEBUG(SSSDBG_CRIT_FAILURE,
+                  "Failed to read attribute [%s] from userinfo data.\n",
+                  user_identifier_attr);
+        }
+    } else {
+        user_identifier = json_string_value(json_object_get(userinfo, "sub"));
+        if (user_identifier == NULL) {
+            DEBUG(SSSDBG_TRACE_ALL,
+                  "Missing [sub] attribute, falling back to [id].\n");
+            id_object = json_object_get(userinfo, "id");
+            if (id_object != NULL) {
+                user_identifier = get_id_string(mem_ctx, id_object);
+                if (user_identifier == NULL) {
+                    DEBUG(SSSDBG_OP_FAILURE,
+                          "Failed to get user identifier string.\n");
+                }
+            } else {
+                DEBUG(SSSDBG_CRIT_FAILURE,
+                      "Failed to read attribute [id] from userinfo data.\n");
+            }
+        }
+    }
+
+    if (user_identifier == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "No attribute to identify the user found.\n");
+    } else {
+        DEBUG(SSSDBG_CONF_SETTINGS, "User sub: [%s].\n", user_identifier);
+    }
+
+    return user_identifier;
+}
 
 int main(int argc, const char *argv[])
 {
@@ -948,9 +1016,11 @@ int main(int argc, const char *argv[])
     char *scope = NULL;
     char *client_secret = NULL;
     char *ca_db = NULL;
+    char *user_identifier_attr = NULL;
     bool libcurl_debug = false;
     bool get_device_code = false;
     bool get_access_token = false;
+    const char *user_identifier = NULL;
 
     struct poptOption long_options[] = {
         POPT_AUTOHELP
@@ -964,6 +1034,7 @@ int main(int argc, const char *argv[])
         {"device-auth-endpoint", 0, POPT_ARG_STRING, &device_auth_endpoint, 0, _("Device authorization endpoint of the IdP"), NULL},
         {"token-endpoint", 0, POPT_ARG_STRING, &token_endpoint, 0, _("Token endpoint of the IdP"), NULL},
         {"userinfo-endpoint", 0, POPT_ARG_STRING, &userinfo_endpoint, 0, _("Userinfo endpoint of the IdP"), NULL},
+        {"user-identifier-attribute", 0, POPT_ARG_STRING, &user_identifier_attr, 0, _("Unique identifier of the user in the userinfo data"), NULL},
         {"jwks-uri", 0, POPT_ARG_STRING, &jwks_uri, 0, _("JWKS URI of the IdP"), NULL},
         {"scope", 0, POPT_ARG_STRING, &scope, 0, _("Supported scope of the IdP to get userinfo"), NULL},
         {"client-id", 0, POPT_ARG_STRING, &client_id, 0, _("Client ID"), NULL},
@@ -1249,11 +1320,26 @@ int main(int argc, const char *argv[])
 
         DEBUG(SSSDBG_CONF_SETTINGS, "userinfo: [%s].\n",
                                     json_dumps(dc_ctx->userinfo, 0));
+#if 0
         DEBUG(SSSDBG_CONF_SETTINGS, "User sub: [%s].\n",
                    json_string_value(json_object_get(dc_ctx->userinfo, "sub")));
 
         fprintf(stdout,"%s",
                 json_string_value(json_object_get(dc_ctx->userinfo, "sub")));
+#endif
+
+        user_identifier = get_user_identifier(dc_ctx, dc_ctx->userinfo,
+                                              user_identifier_attr);
+        if (user_identifier == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to get user identifier.\n");
+            ret = EINVAL;
+            goto fail;
+        }
+
+        DEBUG(SSSDBG_CONF_SETTINGS, "User identifier: [%s].\n",
+                                    user_identifier);
+
+        fprintf(stdout,"%s", user_identifier);
         fflush(stdout);
     }
 
