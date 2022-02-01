@@ -1714,7 +1714,7 @@ static int prompt_oauth2(pam_handle_t *pamh, struct pam_items *pi)
     char *msg;
     int ret;
 
-    if (pi->oauth2_url_complete != NULL) {
+    if (pi->oauth2_url_complete != NULL && *pi->oauth2_url_complete != '\0') {
         ret = asprintf(&msg, _("Authenticate at %1$s and press ENTER."),
                        pi->oauth2_url_complete);
     } else {

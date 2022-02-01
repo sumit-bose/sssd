@@ -1344,6 +1344,7 @@ static errno_t k5c_attach_oauth2_info_msg(struct krb5_req *kr,
     size_t user_code_len = 0;
     size_t idx = 0;
     errno_t ret;
+    const char *opt = "";
 
     if (data->verification_uri == NULL || data->user_code == NULL) {
         DEBUG(SSSDBG_CRIT_FAILURE,
@@ -1358,6 +1359,7 @@ static errno_t k5c_attach_oauth2_info_msg(struct krb5_req *kr,
 
     if (data->verification_uri_complete != NULL) {
         curi_len = strlen(data->verification_uri_complete) + 1;
+        opt = data->verification_uri_complete;
     } else {
         curi_len = 1;
     }
@@ -1375,7 +1377,7 @@ static errno_t k5c_attach_oauth2_info_msg(struct krb5_req *kr,
     memcpy(msg, data->verification_uri, uri_len);
     idx += uri_len;
 
-    memcpy(msg + idx, data->verification_uri_complete, curi_len);
+    memcpy(msg + idx, opt, curi_len);
     idx += curi_len;
 
     memcpy(msg + idx, data->user_code, user_code_len);

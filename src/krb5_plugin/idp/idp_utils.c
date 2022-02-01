@@ -311,6 +311,7 @@ sss_idp_oauth2_encode(struct sss_idp_oauth2 *data)
     }
 
     aret = asprintf(&str, "%s%s", SSSD_IDP_OAUTH2_PREFIX, json_str);
+    free(json_str);
     if (aret < 0) {
         return NULL;
     }
