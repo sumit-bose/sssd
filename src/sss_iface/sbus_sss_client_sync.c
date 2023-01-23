@@ -30,6 +30,61 @@
 #include "sss_iface/sbus_sss_client_properties.h"
 
 static errno_t
+sbus_method_in__out_iss
+    (TALLOC_CTX *mem_ctx,
+     struct sbus_sync_connection *conn,
+     const char *bus,
+     const char *path,
+     const char *iface,
+     const char *method,
+     int32_t* _arg0,
+     const char ** _arg1,
+     const char ** _arg2)
+{
+    TALLOC_CTX *tmp_ctx;
+    struct _sbus_sss_invoker_args_iss *out;
+    DBusMessage *reply;
+    errno_t ret;
+
+    tmp_ctx = talloc_new(NULL);
+    if (tmp_ctx == NULL) {
+        DEBUG(SSSDBG_FATAL_FAILURE, "Out of memory!\n");
+        return ENOMEM;
+    }
+
+    out = talloc_zero(tmp_ctx, struct _sbus_sss_invoker_args_iss);
+    if (out == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Unable to allocate space for output parameters!\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+
+    ret = sbus_sync_call_method(tmp_ctx, conn, NULL, NULL,
+                                bus, path, iface, method, NULL, &reply);
+    if (ret != EOK) {
+        goto done;
+    }
+
+    ret = sbus_read_output(out, reply, (sbus_invoker_reader_fn)_sbus_sss_invoker_read_iss, out);
+    if (ret != EOK) {
+        goto done;
+    }
+
+    *_arg0 = out->arg0;
+    *_arg1 = talloc_steal(mem_ctx, out->arg1);
+    *_arg2 = talloc_steal(mem_ctx, out->arg2);
+
+    ret = EOK;
+
+done:
+    talloc_free(tmp_ctx);
+
+    return ret;
+}
+
+static errno_t
 sbus_method_in_ss_out_o
     (TALLOC_CTX *mem_ctx,
      struct sbus_sync_connection *conn,
@@ -84,6 +139,23 @@ done:
     talloc_free(tmp_ctx);
 
     return ret;
+}
+
+errno_t
+sbus_call_oddjob_sss_get_keytab_principals_sss_get_keytab_principals
+    (TALLOC_CTX *mem_ctx,
+     struct sbus_sync_connection *conn,
+     const char *busname,
+     const char *object_path,
+     int32_t* _arg_ret,
+     const char ** _arg_stdout,
+     const char ** _arg_stderr)
+{
+     return sbus_method_in__out_iss(mem_ctx, conn,
+          busname, object_path, "com.redhat.oddjob_sss_get_keytab_principals", "sss_get_keytab_principals",
+          _arg_ret,
+          _arg_stdout,
+          _arg_stderr);
 }
 
 errno_t

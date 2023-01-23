@@ -23,6 +23,9 @@
 #include "sbus/sbus_interface_declarations.h"
 
 extern const struct sbus_method_arguments
+_sbus_sss_args_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals;
+
+extern const struct sbus_method_arguments
 _sbus_sss_args_org_freedesktop_FleetCommanderClient_ProcessSSSDFiles;
 
 extern const struct sbus_method_arguments

@@ -29,6 +29,21 @@
 #include "sss_iface/sss_iface_types.h"
 
 struct tevent_req *
+sbus_call_oddjob_sss_get_keytab_principals_sss_get_keytab_principals_send
+    (TALLOC_CTX *mem_ctx,
+     struct sbus_connection *conn,
+     const char *busname,
+     const char *object_path);
+
+errno_t
+sbus_call_oddjob_sss_get_keytab_principals_sss_get_keytab_principals_recv
+    (TALLOC_CTX *mem_ctx,
+     struct tevent_req *req,
+     int32_t* _ret,
+     const char ** _stdout,
+     const char ** _stderr);
+
+struct tevent_req *
 sbus_call_fleet_ProcessSSSDFiles_send
     (TALLOC_CTX *mem_ctx,
      struct sbus_connection *conn,

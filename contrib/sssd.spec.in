@@ -280,6 +280,7 @@ from and authenticate against an LDAP server.
 Summary: SSSD helpers needed for Kerberos and GSSAPI authentication
 License: GPLv3+
 Requires: cyrus-sasl-gssapi%{?_isa}
+Requires: oddjob
 Requires: sssd-common = %{version}-%{release}
 
 %description krb5-common
@@ -808,6 +809,9 @@ done
 %attr(755,%{sssd_user},%{sssd_user}) %dir %{pubconfpath}/krb5.include.d
 %attr(%{child_attrs},root,%{sssd_user}) %{_libexecdir}/%{servicename}/ldap_child
 %attr(%{child_attrs},root,%{sssd_user}) %{_libexecdir}/%{servicename}/krb5_child
+%attr(%{child_attrs},root,%{sssd_user}) %{_libexecdir}/%{servicename}/sss_get_keytab_principals
+%{_sysconfdir}/oddjobd.conf.d/oddjobd-sss_get_keytab_principals.conf
+%{_sysconfdir}/dbus-1/system.d/oddjob-sss_get_keytab_principals.conf
 
 %files krb5 -f sssd_krb5.lang
 %license COPYING
@@ -1062,6 +1066,16 @@ fi
 
 %posttrans common
 %systemd_postun_with_restart sssd.service
+
+%post krb5-common
+/bin/systemctl reload-or-try-restart dbus
+/bin/systemctl reload-or-try-restart oddjob
+
+%preun krb5-common
+if [ $1 -eq 0 ]; then
+    /bin/systemctl reload-or-try-restart dbus
+    /bin/systemctl reload-or-try-restart oddjobd
+fi
 
 %changelog
 * Thu Jan 21 2021 Pavel Březina <pbrezina@redhat.com> - @PACKAGE_NAME@-@PACKAGE_VERSION@-0@PRERELEASE_VERSION@

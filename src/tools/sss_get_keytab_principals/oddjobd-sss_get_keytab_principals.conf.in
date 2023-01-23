@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+
+<!-- This configuration file snippet controls the oddjob daemon.  It
+     provides access to klist functionality via a service named
+     "com.redhat.oddjob_klist", which exposes a single object
+     ("/").
+     The object allows the root user to call any of the standard D-Bus
+     introspection interface's methods (these are implemented by
+     oddjobd itself), and also defines an interface named
+     "com.redhat.oddjob_klist", which provides one method.  -->
+
+<oddjobconfig>
+
+  <service name="com.redhat.oddjob_sss_get_keytab_principals">
+
+    <object name="/">
+
+      <interface name="org.freedesktop.DBus.Introspectable">
+
+        <allow min_uid="0" max_uid="0"/>
+        <!-- <method name="Introspect"/> -->
+
+      </interface>
+
+      <interface name="com.redhat.oddjob_sss_get_keytab_principals">
+
+        <method name="sss_get_keytab_principals">
+		<helper exec="@libexecdir@/sssd/sss_get_keytab_principals"
+                  arguments="0"
+                  prepend_user_name="no"/>
+          <allow min_uid="0" max_uid="1000000000"/>
+        </method>
+
+      </interface>
+
+    </object>
+
+  </service>
+
+</oddjobconfig>

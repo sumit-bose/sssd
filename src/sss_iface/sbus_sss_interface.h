@@ -25,6 +25,34 @@
 #include "sss_iface/sbus_sss_symbols.h"
 #include "sss_iface/sbus_sss_keygens.h"
 
+/* Interface: com.redhat.oddjob_sss_get_keytab_principals */
+#define SBUS_IFACE_com_redhat_oddjob_sss_get_keytab_principals(methods, signals, properties) ({ \
+    sbus_interface("com.redhat.oddjob_sss_get_keytab_principals", NULL, \
+        (methods), (signals), (properties)); \
+})
+
+/* Method: com.redhat.oddjob_sss_get_keytab_principals.sss_get_keytab_principals */
+#define SBUS_METHOD_SYNC_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals(handler, data) ({ \
+    SBUS_CHECK_SYNC((handler), (data), int32_t*, const char **, const char **); \
+    sbus_method_sync("sss_get_keytab_principals", \
+        &_sbus_sss_args_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals, \
+        NULL, \
+        _sbus_sss_invoke_in__out_iss_send, \
+        NULL, \
+        (handler), (data)); \
+})
+
+#define SBUS_METHOD_ASYNC_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals(handler_send, handler_recv, data) ({ \
+    SBUS_CHECK_SEND((handler_send), (data)); \
+    SBUS_CHECK_RECV((handler_recv), int32_t*, const char **, const char **); \
+    sbus_method_async("sss_get_keytab_principals", \
+        &_sbus_sss_args_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals, \
+        NULL, \
+        _sbus_sss_invoke_in__out_iss_send, \
+        NULL, \
+        (handler_send), (handler_recv), (data)); \
+})
+
 /* Interface: org.freedesktop.FleetCommanderClient */
 #define SBUS_IFACE_org_freedesktop_FleetCommanderClient(methods, signals, properties) ({ \
     sbus_interface("org.freedesktop.FleetCommanderClient", NULL, \

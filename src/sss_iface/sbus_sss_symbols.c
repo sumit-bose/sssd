@@ -21,6 +21,19 @@
 #include "sss_iface/sbus_sss_symbols.h"
 
 const struct sbus_method_arguments
+_sbus_sss_args_com_redhat_oddjob_sss_get_keytab_principals_sss_get_keytab_principals = {
+    .input = (const struct sbus_argument[]){
+        {NULL}
+    },
+    .output = (const struct sbus_argument[]){
+        {.type = "i", .name = "ret"},
+        {.type = "s", .name = "stdout"},
+        {.type = "s", .name = "stderr"},
+        {NULL}
+    }
+};
+
+const struct sbus_method_arguments
 _sbus_sss_args_org_freedesktop_FleetCommanderClient_ProcessSSSDFiles = {
     .input = (const struct sbus_argument[]){
         {.type = "u", .name = "uid"},

@@ -58,6 +58,23 @@ _sbus_sss_invoker_write_b
    (DBusMessageIter *iter,
     struct _sbus_sss_invoker_args_b *args);
 
+struct _sbus_sss_invoker_args_iss {
+    int32_t arg0;
+    const char * arg1;
+    const char * arg2;
+};
+
+errno_t
+_sbus_sss_invoker_read_iss
+   (TALLOC_CTX *mem_ctx,
+    DBusMessageIter *iter,
+    struct _sbus_sss_invoker_args_iss *args);
+
+errno_t
+_sbus_sss_invoker_write_iss
+   (DBusMessageIter *iter,
+    struct _sbus_sss_invoker_args_iss *args);
+
 struct _sbus_sss_invoker_args_o {
     const char * arg0;
 };

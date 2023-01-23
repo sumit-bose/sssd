@@ -35,6 +35,8 @@
 
 #include "providers/ldap/sdap_idmap.h"
 
+#include "sss_iface/sbus_sss_client_sync.h"
+
 errno_t ldap_id_setup_tasks(struct sdap_id_ctx *ctx)
 {
     return sdap_id_setup_tasks(ctx->be, ctx, ctx->opts->sdom,
@@ -184,6 +186,23 @@ sdap_set_sasl_options(struct sdap_options *id_opts,
             desired_realm = default_realm;
         }
     }
+
+
+    struct sbus_sync_connection *conn;
+    int odd_ret;
+    const char *odd_stdout;
+    const char *odd_stderr;
+    conn = sbus_sync_connect_system(tmp_ctx, NULL);
+    if (conn == NULL) {
+        return ENOMEM;
+    }
+    ret = sbus_call_oddjob_sss_get_keytab_principals_sss_get_keytab_principals(tmp_ctx, conn,
+                                       "com.redhat.oddjob_sss_get_keytab_principals", "/",
+                                       &odd_ret, &odd_stdout, &odd_stderr);
+    DEBUG(SSSDBG_TRACE_INTERNAL, "Got from oddjob: [%d][%d][%s][%s].\n",
+                                 ret, odd_ret, odd_stdout, odd_stderr);
+    talloc_free(conn);
+
 
     DEBUG(SSSDBG_CONF_SETTINGS, "Will look for %s@%s in %s\n",
           desired_primary, desired_realm,

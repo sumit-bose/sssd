@@ -29,6 +29,16 @@
 #include "sss_iface/sss_iface_types.h"
 
 errno_t
+sbus_call_oddjob_sss_get_keytab_principals_sss_get_keytab_principals
+    (TALLOC_CTX *mem_ctx,
+     struct sbus_sync_connection *conn,
+     const char *busname,
+     const char *object_path,
+     int32_t* _arg_ret,
+     const char ** _arg_stdout,
+     const char ** _arg_stderr);
+
+errno_t
 sbus_call_systemd_RestartUnit
     (TALLOC_CTX *mem_ctx,
      struct sbus_sync_connection *conn,

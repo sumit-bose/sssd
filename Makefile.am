@@ -60,6 +60,7 @@ sssdtapscriptdir = $(sssddatadir)/systemtap
 krb5snippetsdir = $(sssddatadir)/krb5-snippets
 dbuspolicydir = $(sysconfdir)/dbus-1/system.d
 dbusservicedir = $(datadir)/dbus-1/system-services
+oddjobpolicydir = $(sysconfdir)/oddjobd.conf.d
 sss_statedir = $(localstatedir)/lib/sss
 runstatedir = @runstatedir@
 localedir = @localedir@
@@ -143,6 +144,8 @@ endif
 CMOCKA_CFLAGS = -fno-lto
 
 pkgconfig_DATA =
+dist_dbuspolicy_DATA =
+dist_oddjobpolicy_DATA =
 
 ACLOCAL_AMFLAGS = -I m4 -I .
 
@@ -168,6 +171,7 @@ sssdlibexec_PROGRAMS = \
     ldap_child \
     proxy_child \
     sss_signal \
+    sss_get_keytab_principals \
     $(NULL)
 if BUILD_SUDO
 sssdlibexec_PROGRAMS += sssd_sudo
@@ -1728,7 +1732,7 @@ sssd_ifp_LDADD = \
     libsss_sbus.la \
     $(NULL)
 
-dist_dbuspolicy_DATA = \
+dist_dbuspolicy_DATA += \
     src/responder/ifp/org.freedesktop.sssd.infopipe.conf
 dist_dbusservice_DATA = \
     src/responder/ifp/org.freedesktop.sssd.infopipe.service
@@ -1908,6 +1912,21 @@ sss_override_LDADD = \
 sss_override_CFLAGS = \
     $(AM_CFLAGS) \
     $(NULL)
+
+sss_get_keytab_principals_SOURCES = \
+    src/tools/sss_get_keytab_principals/sss_get_keytab_principals.c \
+    $(NULL)
+sss_get_keytab_principals_LDADD = \
+    $(KRB5_LIBS) \
+    $(NULL)
+sss_get_keytab_principals_CFLAGS = \
+    $(KRB5_CFLAGS) \
+    $(NULL)
+
+dist_dbuspolicy_DATA += \
+    src/tools/sss_get_keytab_principals/oddjob-sss_get_keytab_principals.conf
+dist_oddjobpolicy_DATA += \
+    src/tools/sss_get_keytab_principals/oddjobd-sss_get_keytab_principals.conf
 
 sssctl_SOURCES = \
     src/tools/sssctl/sssctl.c \
@@ -4267,6 +4286,7 @@ libsss_ldap_common_la_LIBADD = \
     libsss_krb5_common.la \
     libsss_idmap.la \
     libsss_certmap.la \
+    libsss_iface_sync.la \
     $(SSSD_INTERNAL_LTLIBS) \
     $(NULL)
 libsss_ldap_common_la_LDFLAGS = \
@@ -5304,6 +5324,7 @@ installsssddirs::
     $(DESTDIR)$(libdir)/ldb \
     $(DESTDIR)$(dbuspolicydir) \
     $(DESTDIR)$(dbusservicedir) \
+    $(DESTDIR)$(oddjobpolicydir) \
     $(DESTDIR)$(sssdlibdir) \
     $(DESTDIR)$(pkglibdir) \
     $(DESTDIR)$(sssddatadir) \

@@ -29,4 +29,13 @@
             <arg type="q" name="prio" direction="in" />
         </method>
     </interface>
+    <interface name="com.redhat.oddjob_sss_get_keytab_principals">
+        <annotation name="codegen.Name" value="oddjob_sss_get_keytab_principals" />
+        <annotation name="codegen.SyncCaller" value="true" />
+        <method name="sss_get_keytab_principals">
+            <arg type="i" name="ret" direction="out" />
+            <arg type="s" name="stdout" direction="out" />
+            <arg type="s" name="stderr" direction="out" />
+        </method>
+    </interface>
 </node>
