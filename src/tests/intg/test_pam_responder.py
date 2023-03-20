@@ -39,10 +39,6 @@ from intg.util import unindent
 LDAP_BASE_DN = "dc=example,dc=com"
 
 
-def have_files_provider():
-    return os.environ['FILES_PROVIDER'] == "enabled"
-
-
 @pytest.fixture(scope="module")
 def ad_inst(request):
     """Fake AD server instance fixture"""
@@ -144,9 +140,11 @@ def format_pam_cert_auth_conf(config):
 
         [domain/auth_only]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
-        local_auth_policy = enable:smartcard
+        id_provider = proxy
+        # It might be worth to add an special hardcoded target
+        proxy_pam_target = sssd-shadowutils
+        local_auth_policy = only
+        proxy_lib_name = call
 
         [certmap/auth_only/user1]
         matchrule = <SUBJECT>.*CN=SSSD test cert 0001.*
@@ -179,9 +177,10 @@ def format_pam_cert_auth_conf_name_format(config):
         use_fully_qualified_names = True
         full_name_format = %2$s\\%1$s
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
-        local_auth_policy = enable:smartcard
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_pam_target = sssd-shadowutils
+        proxy_lib_name = call
 
         [certmap/auth_only/user1]
         matchrule = <SUBJECT>.*CN=SSSD test cert 0001.*
@@ -204,8 +203,9 @@ def format_pam_krb5_auth(config, kdc_instance):
 
         [domain/krb5_auth]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_lib_name = call
         auth_provider = krb5
 
         krb5_realm = PAMKRB5TEST
@@ -229,8 +229,9 @@ def format_pam_krb5_auth_domains(config, kdc_instance):
 
         [domain/wrong.dom1]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_lib_name = call
         auth_provider = krb5
 
         krb5_realm = WRONG1REALM
@@ -238,8 +239,9 @@ def format_pam_krb5_auth_domains(config, kdc_instance):
 
         [domain/wrong.dom2]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_lib_name = call
         auth_provider = krb5
 
         krb5_realm = WRONG2REALM
@@ -247,8 +249,9 @@ def format_pam_krb5_auth_domains(config, kdc_instance):
 
         [domain/wrong.dom3]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_lib_name = call
         auth_provider = krb5
 
         krb5_realm = WRONG3REALM
@@ -256,8 +259,9 @@ def format_pam_krb5_auth_domains(config, kdc_instance):
 
         [domain/krb5_auth]
         debug_level = 10
-        id_provider = files
-        fallback_to_nss = False
+        id_provider = proxy
+        local_auth_policy = only
+        proxy_lib_name = call
         auth_provider = krb5
 
         krb5_realm = PAMKRB5TEST
@@ -375,8 +379,6 @@ def simple_pam_cert_auth_name_format(request, passwd_ops_setup):
     return None
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_preauth_indicator(simple_pam_cert_auth):
     """Check if preauth indicator file is created"""
     statinfo = os.stat(config.PUBCONF_PATH + "/pam_preauth_available")
@@ -392,8 +394,6 @@ def pam_prompting_config(request, ldap_conn):
     return None
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_password_prompting_config_global(ldap_conn, pam_prompting_config,
                                           env_for_sssctl):
     """Check global change of the password prompt"""
@@ -419,8 +419,6 @@ def test_password_prompting_config_global(ldap_conn, pam_prompting_config,
     assert err.find("My global prompt") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_password_prompting_config_srv(ldap_conn, pam_prompting_config,
                                        env_for_sssctl):
     """Check change of the password prompt for dedicated service"""
@@ -462,8 +460,6 @@ def env_for_sssctl(request):
     return env_for_sssctl
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_sc_auth_wrong_pin(simple_pam_cert_auth, env_for_sssctl):
 
     sssctl = subprocess.Popen(["sssctl", "user-checks", "user1",
@@ -488,8 +484,6 @@ def test_sc_auth_wrong_pin(simple_pam_cert_auth, env_for_sssctl):
                     "Authentication failure") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_sc_auth(simple_pam_cert_auth, env_for_sssctl):
 
     sssctl = subprocess.Popen(["sssctl", "user-checks", "user1",
@@ -513,8 +507,6 @@ def test_sc_auth(simple_pam_cert_auth, env_for_sssctl):
     assert err.find("pam_authenticate for user [user1]: Success") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_require_sc_auth(simple_pam_cert_auth, env_for_sssctl):
 
     sssctl = subprocess.Popen(["sssctl", "user-checks", "user1",
@@ -539,8 +531,6 @@ def test_require_sc_auth(simple_pam_cert_auth, env_for_sssctl):
     assert err.find("pam_authenticate for user [user1]: Success") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_require_sc_auth_no_cert(simple_pam_cert_auth_no_cert, env_for_sssctl):
 
     # We have to wait about 20s before the command returns because there will
@@ -576,8 +566,6 @@ def test_require_sc_auth_no_cert(simple_pam_cert_auth_no_cert, env_for_sssctl):
                     "service cannot retrieve authentication info") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_try_sc_auth_no_map(simple_pam_cert_auth, env_for_sssctl):
 
     sssctl = subprocess.Popen(["sssctl", "user-checks", "user2",
@@ -603,8 +591,6 @@ def test_try_sc_auth_no_map(simple_pam_cert_auth, env_for_sssctl):
                     "service cannot retrieve authentication info") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_try_sc_auth(simple_pam_cert_auth, env_for_sssctl):
 
     sssctl = subprocess.Popen(["sssctl", "user-checks", "user1",
@@ -629,8 +615,6 @@ def test_try_sc_auth(simple_pam_cert_auth, env_for_sssctl):
     assert err.find("pam_authenticate for user [user1]: Success") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_try_sc_auth_root(simple_pam_cert_auth, env_for_sssctl):
     """
     Make sure pam_sss returns PAM_AUTHINFO_UNAVAIL even for root if
@@ -659,8 +643,6 @@ def test_try_sc_auth_root(simple_pam_cert_auth, env_for_sssctl):
                     "service cannot retrieve authentication info") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_sc_auth_missing_name(simple_pam_cert_auth, env_for_sssctl):
     """
     Test pam_sss allow_missing_name feature.
@@ -688,8 +670,6 @@ def test_sc_auth_missing_name(simple_pam_cert_auth, env_for_sssctl):
     assert err.find("pam_authenticate for user [user1]: Success") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_sc_auth_missing_name_whitespace(simple_pam_cert_auth, env_for_sssctl):
     """
     Test pam_sss allow_missing_name feature.
@@ -717,8 +697,6 @@ def test_sc_auth_missing_name_whitespace(simple_pam_cert_auth, env_for_sssctl):
     assert err.find("pam_authenticate for user [user1]: Success") != -1
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_sc_auth_name_format(simple_pam_cert_auth_name_format, env_for_sssctl):
     """
     Test that full_name_format is respected with pam_sss allow_missing_name
@@ -779,8 +757,6 @@ def setup_krb5(request, kdc_instance, passwd_ops_setup):
     return None
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_krb5_auth(setup_krb5, env_for_sssctl):
     """
     Test basic Kerberos authentication, check for authentication failure when
@@ -847,8 +823,6 @@ def setup_krb5_domains(request, kdc_instance, passwd_ops_setup):
     return None
 
 
-@pytest.mark.skipif(not have_files_provider(),
-                    reason="'files provider' disabled, skipping")
 def test_krb5_auth_domains(setup_krb5_domains, env_for_sssctl):
     """
     Test basic Kerberos authentication with pam_sss 'domains' option, make

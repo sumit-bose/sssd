@@ -347,6 +347,23 @@ errno_t sssm_proxy_id_init(TALLOC_CTX *mem_ctx,
         goto done;
     }
 
+    ret = confdb_certmap_to_sysdb(be_ctx->cdb, be_ctx->domain);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Failed to initialize certificate mapping rules. "
+              "Authentication with certificates/Smartcards might not work "
+              "as expected.\n");
+        /* not fatal, ignored */
+    } else {
+        ret = proxy_init_certmap(module_ctx->id_ctx, module_ctx->id_ctx);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_CRIT_FAILURE, "files_init_certmap failed. "
+                  "Authentication with certificates/Smartcards might not work "
+                  "as expected.\n");
+            /* not fatal, ignored */
+        }
+    }
+
     dp_set_method(dp_methods, DPM_ACCOUNT_HANDLER,
                   proxy_account_info_handler_send, proxy_account_info_handler_recv,
                   module_ctx->id_ctx, struct proxy_id_ctx, struct dp_id_data,
