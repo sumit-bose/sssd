@@ -20,6 +20,7 @@
 
 #include "config.h"
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 
 #include "sss_cli.h"
@@ -34,6 +35,7 @@ struct prompt_config_password {
 struct prompt_config_2fa {
     char *prompt_1st;
     char *prompt_2nd;
+    bool force_second_factor;
 };
 
 struct prompt_config_2fa_single {
@@ -90,6 +92,14 @@ const char *pc_get_2fa_2nd_prompt(struct prompt_config *pc)
         return pc->data.two_fa.prompt_2nd;
     }
     return NULL;
+}
+
+bool pc_get_2fa_force_second_factor(struct prompt_config *pc)
+{
+    if (pc != NULL && pc_get_type(pc) == PC_TYPE_2FA) {
+        return pc->data.two_fa.force_second_factor;
+    }
+    return false;
 }
 
 const char *pc_get_2fa_single_prompt(struct prompt_config *pc)
@@ -265,7 +275,8 @@ done:
 }
 
 errno_t pc_list_add_2fa(struct prompt_config ***pc_list,
-                        const char *prompt_1st, const char *prompt_2nd)
+                        const char *prompt_1st, const char *prompt_2nd,
+                        bool force_second_factor)
 {
     struct prompt_config *pc;
     int ret;
@@ -292,6 +303,8 @@ errno_t pc_list_add_2fa(struct prompt_config ***pc_list,
         ret = ENOMEM;
         goto done;
     }
+
+    pc->data.two_fa.force_second_factor = force_second_factor;
 
     ret = pc_list_add_pc(pc_list, pc);
     if (ret != EOK) {
@@ -422,6 +435,7 @@ errno_t pam_get_response_prompt_config(struct prompt_config **pc_list, int *len,
             l += strlen(pc_list[c]->data.two_fa.prompt_1st);
             l += sizeof(uint32_t);
             l += strlen(pc_list[c]->data.two_fa.prompt_2nd);
+            l += sizeof(uint32_t);
             break;
         case PC_TYPE_2FA_SINGLE:
             l += sizeof(uint32_t);
@@ -471,6 +485,9 @@ errno_t pam_get_response_prompt_config(struct prompt_config **pc_list, int *len,
                                  &rp);
             safealign_memcpy(&d[rp], pc_list[c]->data.two_fa.prompt_2nd,
                              strlen(pc_list[c]->data.two_fa.prompt_2nd), &rp);
+            SAFEALIGN_SET_UINT32(&d[rp],
+                                 pc_list[c]->data.two_fa.force_second_factor ? 1 : 0,
+                                 &rp);
             break;
         case PC_TYPE_2FA_SINGLE:
             SAFEALIGN_SET_UINT32(&d[rp],
@@ -603,7 +620,14 @@ errno_t pc_list_from_response(int size, uint8_t *buf,
             }
             rp += l;
 
-            ret = pc_list_add_2fa(&pl, str, str2);
+            if (rp > size - sizeof(uint32_t)) {
+                free(str);
+                ret = EINVAL;
+                goto done;
+            }
+            SAFEALIGN_COPY_UINT32(&l, buf + rp, &rp);
+
+            ret = pc_list_add_2fa(&pl, str, str2, (l == 0) ? false : true);
             free(str);
             free(str2);
             if (ret != EOK) {

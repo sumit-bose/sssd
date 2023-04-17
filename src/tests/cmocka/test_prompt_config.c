@@ -88,13 +88,14 @@ void test_pc_list_add_2fa(void **state)
     int ret;
     struct prompt_config **pc_list = NULL;
 
-    ret = pc_list_add_2fa(&pc_list, "Hello", "Good Bye");
+    ret = pc_list_add_2fa(&pc_list, "Hello", "Good Bye", true);
     assert_int_equal(ret, EOK);
     assert_non_null(pc_list);
     assert_non_null(pc_list[0]);
     assert_int_equal(PC_TYPE_2FA, pc_get_type(pc_list[0]));
     assert_string_equal("Hello", pc_get_2fa_1st_prompt(pc_list[0]));
     assert_string_equal("Good Bye", pc_get_2fa_2nd_prompt(pc_list[0]));
+    assert_true(pc_get_2fa_force_second_factor(pc_list[0]));
     assert_null(pc_list[1]);
 
     pc_list_free(pc_list);
@@ -110,7 +111,7 @@ void test_pam_get_response_prompt_config(void **state)
     ret = pc_list_add_password(&pc_list, "password");
     assert_int_equal(ret, EOK);
 
-    ret = pc_list_add_2fa(&pc_list, "first", "second");
+    ret = pc_list_add_2fa(&pc_list, "first", "second", true);
     assert_int_equal(ret, EOK);
 
     ret = pc_list_add_2fa_single(&pc_list, "single");
@@ -119,12 +120,12 @@ void test_pam_get_response_prompt_config(void **state)
     ret = pam_get_response_prompt_config(pc_list, &len, &data);
     pc_list_free(pc_list);
     assert_int_equal(ret, EOK);
-    assert_int_equal(len, 57);
+    assert_int_equal(len, 61);
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-    assert_memory_equal(data, "\3\0\0\0\1\0\0\0\10\0\0\0" "password\2\0\0\0\5\0\0\0" "first\6\0\0\0" "second\3\0\0\0\6\0\0\0" "single", len);
+    assert_memory_equal(data, "\3\0\0\0\1\0\0\0\10\0\0\0" "password\2\0\0\0\5\0\0\0" "first\6\0\0\0" "second\1\0\0\0\3\0\0\0\6\0\0\0" "single", len);
 #else
-    assert_memory_equal(data, "\0\0\0\3\0\0\0\1\0\0\0\10" "password\0\0\0\2\0\0\0\5" "first\0\0\0\6" "second\0\0\0\3\0\0\0\6" "single", len);
+    assert_memory_equal(data, "\0\0\0\3\0\0\0\1\0\0\0\10" "password\0\0\0\2\0\0\0\5" "first\0\0\0\6" "second\0\0\0\1\0\0\0\3\0\0\0\6" "single", len);
 #endif
 
     free(data);
@@ -140,7 +141,7 @@ void test_pc_list_from_response(void **state)
     ret = pc_list_add_password(&pc_list, "password");
     assert_int_equal(ret, EOK);
 
-    ret = pc_list_add_2fa(&pc_list, "first", "second");
+    ret = pc_list_add_2fa(&pc_list, "first", "second", false);
     assert_int_equal(ret, EOK);
 
     ret = pc_list_add_2fa_single(&pc_list, "single");
@@ -149,7 +150,7 @@ void test_pc_list_from_response(void **state)
     ret = pam_get_response_prompt_config(pc_list, &len, &data);
     pc_list_free(pc_list);
     assert_int_equal(ret, EOK);
-    assert_int_equal(len, 57);
+    assert_int_equal(len, 61);
 
     pc_list = NULL;
 
@@ -166,6 +167,7 @@ void test_pc_list_from_response(void **state)
     assert_int_equal(PC_TYPE_2FA, pc_get_type(pc_list[1]));
     assert_string_equal("first", pc_get_2fa_1st_prompt(pc_list[1]));
     assert_string_equal("second", pc_get_2fa_2nd_prompt(pc_list[1]));
+    assert_false(pc_get_2fa_force_second_factor(pc_list[1]));
 
     assert_non_null(pc_list[2]);
     assert_int_equal(PC_TYPE_2FA_SINGLE, pc_get_type(pc_list[2]));

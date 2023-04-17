@@ -4430,6 +4430,11 @@ ldap_user_extra_attrs = phone:telephoneNumber
                         entered here, even if the second factor is
                         optional.</para></listitem>
                         </varlistentry>
+                        <varlistentry><term>force_second_factor</term>
+                        <listitem><para>boolean value for two-step prompting,
+                        if True require that the second factor is present
+                        although it is optional</para></listitem>
+                        </varlistentry>
                     </variablelist>
                     If the second factor is optional and it should be possible
                     to log in either only with the password or with both factors

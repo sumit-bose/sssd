@@ -318,6 +318,7 @@
 #define CONFDB_PC_2FA_SINGLE_PROMPT "single_prompt"
 #define CONFDB_PC_2FA_1ST_PROMPT "first_prompt"
 #define CONFDB_PC_2FA_2ND_PROMPT "second_prompt"
+#define CONFDB_PC_2FA_FORCE_SECOND_FACTOR "force_second_factor"
 #define CONFDB_PC_TYPE_CERT_AUTH "cert_auth"
 #define CONFDB_PC_TYPE_PASSKEY "passkey"
 #define CONFDB_PC_PASSKEY_INTERACTIVE "interactive"

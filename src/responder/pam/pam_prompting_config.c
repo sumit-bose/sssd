@@ -60,6 +60,7 @@ static errno_t pam_set_2fa_prompting_options(TALLOC_CTX *tmp_ctx,
                                              struct prompt_config ***pc_list)
 {
     bool single_2fa_prompt = false;
+    bool force_second_factor = false;
     char *first_prompt = NULL;
     char *second_prompt = NULL;
     int ret;
@@ -83,6 +84,12 @@ static errno_t pam_set_2fa_prompting_options(TALLOC_CTX *tmp_ctx,
         }
         return ret;
     } else {
+        ret = confdb_get_bool(cdb, section, CONFDB_PC_2FA_FORCE_SECOND_FACTOR,
+                              false, &force_second_factor);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "confdb_get_bool failed, using defaults");
+        }
+
         ret = confdb_get_string(cdb, tmp_ctx, section, CONFDB_PC_2FA_2ND_PROMPT,
                                 NULL, &second_prompt);
         if (ret != EOK) {
@@ -90,7 +97,8 @@ static errno_t pam_set_2fa_prompting_options(TALLOC_CTX *tmp_ctx,
                   "confdb_get_string failed, using defaults");
         }
 
-        ret = pc_list_add_2fa(pc_list, first_prompt, second_prompt);
+        ret = pc_list_add_2fa(pc_list, first_prompt, second_prompt,
+                              force_second_factor);
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE, "pc_list_add_2fa failed.\n");
         }

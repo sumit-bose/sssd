@@ -30,6 +30,7 @@
 #include <grp.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <limits.h>
 
 #include "shared/safealign.h"
@@ -667,6 +668,7 @@ enum prompt_config_type pc_get_type(struct prompt_config *pc);
 const char *pc_get_password_prompt(struct prompt_config *pc);
 const char *pc_get_2fa_1st_prompt(struct prompt_config *pc);
 const char *pc_get_2fa_2nd_prompt(struct prompt_config *pc);
+bool pc_get_2fa_force_second_factor(struct prompt_config *pc);
 const char *pc_get_2fa_single_prompt(struct prompt_config *pc);
 const char *pc_get_passkey_inter_prompt(struct prompt_config *pc);
 const char *pc_get_passkey_touch_prompt(struct prompt_config *pc);
@@ -677,7 +679,8 @@ void pc_list_free(struct prompt_config **pc_list);
 errno_t pc_list_add_password(struct prompt_config ***pc_list,
                              const char *prompt);
 errno_t pc_list_add_2fa(struct prompt_config ***pc_list,
-                        const char *prompt_1st, const char *prompt_2nd);
+                        const char *prompt_1st, const char *prompt_2nd,
+                        bool force_second_factor);
 errno_t pc_list_add_2fa_single(struct prompt_config ***pc_list,
                                const char *prompt);
 errno_t pam_get_response_prompt_config(struct prompt_config **pc_list, int *len,

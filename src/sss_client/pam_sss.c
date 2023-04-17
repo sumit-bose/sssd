@@ -1634,7 +1634,8 @@ static int prompt_password(pam_handle_t *pamh, struct pam_items *pi,
 }
 
 static int prompt_2fa(pam_handle_t *pamh, struct pam_items *pi,
-                      const char *prompt_fa1, const char *prompt_fa2)
+                      const char *prompt_fa1, const char *prompt_fa2,
+                      bool force_second_factor)
 {
     int ret;
     const struct pam_conv *conv;
@@ -1680,6 +1681,13 @@ static int prompt_2fa(pam_handle_t *pamh, struct pam_items *pi,
 
     if (resp[0].resp == NULL || *(resp[0].resp) == '\0') {
         D(("Missing factor."));
+        ret = PAM_CRED_INSUFFICIENT;
+        goto done;
+    }
+
+    if ((resp[1].resp == NULL || *(resp[1].resp) == '\0')
+            && force_second_factor) {
+        D(("Missing required second factor."));
         ret = PAM_CRED_INSUFFICIENT;
         goto done;
     }
@@ -2460,7 +2468,8 @@ static int prompt_by_config(pam_handle_t *pamh, struct pam_items *pi)
             break;
         case PC_TYPE_2FA:
             ret = prompt_2fa(pamh, pi, pc_get_2fa_1st_prompt(pi->pc[c]),
-                             pc_get_2fa_2nd_prompt(pi->pc[c]));
+                             pc_get_2fa_2nd_prompt(pi->pc[c]),
+                             pc_get_2fa_force_second_factor(pi->pc[c]));
             break;
         case PC_TYPE_2FA_SINGLE:
             ret = prompt_2fa_single(pamh, pi,
@@ -2521,10 +2530,10 @@ static int get_authtok_for_authentication(pam_handle_t *pamh,
                             && pi->otp_challenge != NULL)) {
                 if (pi->password_prompting) {
                     ret = prompt_2fa(pamh, pi, _("First Factor: "),
-                                     _("Second Factor (optional): "));
+                                     _("Second Factor (optional): "), false);
                 } else {
                     ret = prompt_2fa(pamh, pi, _("First Factor: "),
-                                     _("Second Factor: "));
+                                     _("Second Factor: "), false);
                 }
             } else if (pi->cert_list != NULL) {
                 if (pi->cert_list->next == NULL) {
@@ -2704,10 +2713,10 @@ static int get_authtok_for_password_change(pam_handle_t *pamh,
                             && pi->otp_challenge != NULL)) {
                 if (pi->password_prompting) {
                     ret = prompt_2fa(pamh, pi, _("First Factor (Current Password): "),
-                                     _("Second Factor (optional): "));
+                                     _("Second Factor (optional): "), false);
                 } else {
                     ret = prompt_2fa(pamh, pi, _("First Factor (Current Password): "),
-                                     _("Second Factor: "));
+                                     _("Second Factor: "), false);
                 }
             } else {
                 ret = prompt_password(pamh, pi, _("Current Password: "));
