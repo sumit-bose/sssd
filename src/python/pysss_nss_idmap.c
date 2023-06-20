@@ -30,6 +30,7 @@
 #define SSS_SID_KEY "sid"
 #define SSS_ID_KEY "id"
 #define SSS_TYPE_KEY "type"
+#define SSS_DICT_KEY "dict"
 
 enum lookup_type {
     SIDBYNAME,
@@ -40,6 +41,8 @@ enum lookup_type {
     SIDBYGID,
     NAMEBYSID,
     IDBYSID,
+    ORIGBYUSERNAME,
+    ORIGBYGROUPNAME,
     NAMEBYCERT,
     LISTBYCERT
 };
@@ -71,6 +74,7 @@ static int add_dict_to_list(PyObject *py_list, PyObject *res_type,
 
     return ret;
 }
+
 static int add_dict(PyObject *py_result, PyObject *key, PyObject *res_type,
                     PyObject *res, PyObject *id_type)
 {
@@ -147,6 +151,67 @@ static int do_getsidbyname(enum lookup_type type,
                        PyUnicode_FromString(sid), PYNUMBER_FROMLONG(id_type));
     }
     free(sid);
+
+    return ret;
+}
+
+static PyObject *kv_list_to_dict(struct sss_nss_kv *kv_list)
+{
+    int ret;
+    PyObject *py_dict;
+    size_t c;
+
+    py_dict =  PyDict_New();
+    if (py_dict == NULL) {
+        return NULL;
+    }
+
+    for (c = 0; kv_list[c].key != NULL; c++) {
+        ret = PyDict_SetItem(py_dict, PyUnicode_FromString(kv_list[c].key),
+                                      PyUnicode_FromString(kv_list[c].value));
+        if (ret != 0) {
+            Py_XDECREF(py_dict);
+            return NULL;
+        }
+    }
+
+    return py_dict;
+}
+
+static int do_getorigbyname(enum lookup_type type, PyObject *py_result,
+                            PyObject *py_name)
+{
+    int ret;
+    const char *name;
+    enum sss_id_type id_type;
+    struct sss_nss_kv *kv_list;
+    PyObject *result_dict;
+
+    name = py_string_or_unicode_as_string(py_name);
+    if (name == NULL) {
+        return EINVAL;
+    }
+
+    switch(type) {
+    case ORIGBYUSERNAME:
+        ret = sss_nss_getorigbyusername(name, &kv_list, &id_type);
+        break;
+    case ORIGBYGROUPNAME:
+        ret = sss_nss_getorigbygroupname(name, &kv_list, &id_type);
+        break;
+    default:
+        return EINVAL;
+    }
+
+    if (ret == 0) {
+        result_dict = kv_list_to_dict(kv_list);
+        if (result_dict == NULL) {
+            return ENOMEM;
+        }
+        ret = add_dict(py_result, py_name, PyUnicode_FromString(SSS_DICT_KEY),
+                       result_dict, PYNUMBER_FROMLONG(id_type));
+    }
+    sss_nss_free_kv(kv_list);
 
     return ret;
 }
@@ -347,6 +412,10 @@ static int do_lookup(enum lookup_type type, PyObject *py_result,
         break;
     case LISTBYCERT:
         return do_getlistbycert(py_result, py_inp);
+        break;
+    case ORIGBYUSERNAME:
+    case ORIGBYGROUPNAME:
+        return do_getorigbyname(type, py_result, py_inp);
         break;
     default:
         return ENOSYS;
@@ -586,6 +655,54 @@ static PyObject * py_getlistbycert(PyObject *module, PyObject *args)
     return check_args(LISTBYCERT, args);
 }
 
+PyDoc_STRVAR(getorigbyusername_doc,
+"getorigbyusername(name or list/tuple of names) -> dict(name => dict(results))\n\
+\n\
+Returns a dictionary with a dictionary of results for each given name.\n\
+The result dictionary contains a dictionary and the type of the object which can be\n\
+accessed with the key constants DICT_KEY and TYPE_KEY, respectively.\n\
+\n\
+The dictionary will contain key-value pairs describing properties of the \n\
+related object.\n\
+\n\
+The return type can be one of the following constants:\n\
+- ID_NOT_SPECIFIED\n\
+- ID_USER\n\
+- ID_GROUP\n\
+- ID_BOTH\n\
+\n\
+NOTE: getorigbyusername currently works only with id_provider set as \"ad\" or \"ipa\""
+);
+
+static PyObject * py_getorigbyusername(PyObject *module, PyObject *args)
+{
+    return check_args(ORIGBYUSERNAME, args);
+}
+
+PyDoc_STRVAR(getorigbygroupname_doc,
+"getorigbygroupname(name or list/tuple of names) -> dict(name => dict(results))\n\
+\n\
+Returns a dictionary with a dictionary of results for each given name.\n\
+The result dictionary contains a dictionary and the type of the object which can be\n\
+accessed with the key constants DICT_KEY and TYPE_KEY, respectively.\n\
+\n\
+The dictionary will contain key-value pairs describing properties of the \n\
+related object.\n\
+\n\
+The return type can be one of the following constants:\n\
+- ID_NOT_SPECIFIED\n\
+- ID_USER\n\
+- ID_GROUP\n\
+- ID_BOTH\n\
+\n\
+NOTE: getorigbygroupname currently works only with id_provider set as \"ad\" or \"ipa\""
+);
+
+static PyObject * py_getorigbygroupname(PyObject *module, PyObject *args)
+{
+    return check_args(ORIGBYGROUPNAME, args);
+}
+
 static PyMethodDef methods[] = {
     { sss_py_const_p(char, "getsidbyname"), (PyCFunction) py_getsidbyname,
       METH_VARARGS, getsidbyname_doc },
@@ -607,6 +724,10 @@ static PyMethodDef methods[] = {
       METH_VARARGS, getnamebycert_doc },
     { sss_py_const_p(char, "getlistbycert"), (PyCFunction) py_getlistbycert,
       METH_VARARGS, getlistbycert_doc },
+    { sss_py_const_p(char, "getorigbyusername"), (PyCFunction) py_getorigbyusername,
+      METH_VARARGS, getorigbyusername_doc },
+    { sss_py_const_p(char, "getorigbygroupname"), (PyCFunction) py_getorigbygroupname,
+      METH_VARARGS, getorigbygroupname_doc },
     { NULL,NULL, 0, NULL }
 };
 
@@ -667,6 +788,9 @@ initpysss_nss_idmap(void)
         MODINITERROR(module);
     }
     if (PyModule_AddStringConstant(module, "TYPE_KEY", SSS_TYPE_KEY) == -1) {
+        MODINITERROR(module);
+    }
+    if (PyModule_AddStringConstant(module, "DICT_KEY", SSS_DICT_KEY) == -1) {
         MODINITERROR(module);
     }
 
