@@ -261,7 +261,7 @@ static int sss_nss_get_config(struct sss_nss_ctx *nctx,
     }
 
     ret = add_strings_lists_ex(nctx, nctx->extra_attributes, orig_attrs, false,
-                               true, discard_const(&nctx->full_attribute_list));
+                               true, &nctx->full_attribute_list);
     if (ret != EOK) {
         ret = ENOMEM;
         goto done;

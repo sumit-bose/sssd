@@ -122,11 +122,11 @@ END_TEST
 START_TEST(test_string_in_list_size)
 {
     bool is_in;
-    char *empty_list[] = {};
+    const char *empty_list[] = {};
     size_t empty_list_size = 0;
-    char *list[] = {discard_const("ABC"),
-                    discard_const("DEF"),
-                    discard_const("GHI")};
+    const char *list[] = {discard_const("ABC"),
+                          discard_const("DEF"),
+                          discard_const("GHI")};
     size_t list_size = sizeof(list) / sizeof(list[0]);
 
     is_in = string_in_list_size(NULL, NULL, 0, false);

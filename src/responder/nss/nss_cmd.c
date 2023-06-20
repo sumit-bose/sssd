@@ -1218,7 +1218,7 @@ static errno_t sss_nss_cmd_getorigbyname_common(struct cli_ctx *cli_ctx,
     nss_ctx = talloc_get_type(cli_ctx->rctx->pvt_ctx, struct sss_nss_ctx);
 
     ret = add_strings_lists_ex(cli_ctx, cache_attrs, nss_ctx->full_attribute_list,
-                               false, true, discard_const(&attrs));
+                               false, true, &attrs);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE,
               "Unable to concatenate attributes [%d]: %s\n",

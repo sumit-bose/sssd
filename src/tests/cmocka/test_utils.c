@@ -1543,7 +1543,7 @@ void test_add_strings_lists(void **state)
 {
     const char *l1[] = {"a", "b", "c", "b", NULL};
     const char *l2[] = {"1", "2", "3", "2", NULL};
-    char **res;
+    const char **res;
     int ret;
     size_t c;
     size_t d;
@@ -1644,7 +1644,7 @@ void test_add_strings_lists_ex(void **state)
     const char *l2[] = {"1", "2", "3", "2", NULL};
     const char *r1[sizeof(l1) / sizeof(*l1) - 1];
     const char *r2[sizeof(l2) / sizeof(*l2) - 1];
-    char **res;
+    const char **res;
     int ret;
     size_t c;
     size_t d;

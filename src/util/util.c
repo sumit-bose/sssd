@@ -674,15 +674,17 @@ const char * const * get_known_services(void)
     return svc;
 }
 
-errno_t add_strings_lists_ex(TALLOC_CTX *mem_ctx, const char **l1, const char **l2,
-                             bool copy_strings, bool skip_dups, char ***_new_list)
+errno_t add_strings_lists_ex(TALLOC_CTX *mem_ctx,
+                             const char **l1, const char **l2,
+                             bool copy_strings, bool skip_dups,
+                             const char ***_new_list)
 {
     size_t c;
     size_t n;
     size_t l1_count = 0;
     size_t l2_count = 0;
     size_t new_count = 0;
-    char **new;
+    const char **new;
     int ret;
 
     if (l1 != NULL) {
@@ -695,7 +697,7 @@ errno_t add_strings_lists_ex(TALLOC_CTX *mem_ctx, const char **l1, const char **
 
     new_count = l1_count + l2_count;
 
-    new = talloc_zero_array(mem_ctx, char *, new_count + 1);
+    new = talloc_zero_array(mem_ctx, const char *, new_count + 1);
     if (new == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "talloc_array failed.\n");
         return ENOMEM;

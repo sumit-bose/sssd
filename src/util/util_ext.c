@@ -147,7 +147,8 @@ bool string_in_list(const char *string, char **list, bool case_sensitive)
     return false;
 }
 
-bool string_in_list_size(const char *string, char **list, size_t size, bool case_sensitive)
+bool string_in_list_size(const char *string, const char **list, size_t size,
+                         bool case_sensitive)
 {
     size_t c;
     int(*compare)(const char *s1, const char *s2);
