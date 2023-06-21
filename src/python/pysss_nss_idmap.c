@@ -30,7 +30,7 @@
 #define SSS_SID_KEY "sid"
 #define SSS_ID_KEY "id"
 #define SSS_TYPE_KEY "type"
-#define SSS_DICT_KEY "dict"
+#define SSS_KVLIST_KEY "kvlist"
 
 enum lookup_type {
     SIDBYNAME,
@@ -155,27 +155,33 @@ static int do_getsidbyname(enum lookup_type type,
     return ret;
 }
 
-static PyObject *kv_list_to_dict(struct sss_nss_kv *kv_list)
+static PyObject *kv_list_to_list_of_tuple(struct sss_nss_kv *kv_list)
 {
     int ret;
-    PyObject *py_dict;
+    PyObject *py_list;
+    PyObject *py_tuple;
     size_t c;
 
-    py_dict =  PyDict_New();
-    if (py_dict == NULL) {
+    py_list =  PyList_New(0);
+    if (py_list == NULL) {
         return NULL;
     }
 
     for (c = 0; kv_list[c].key != NULL; c++) {
-        ret = PyDict_SetItem(py_dict, PyUnicode_FromString(kv_list[c].key),
-                                      PyUnicode_FromString(kv_list[c].value));
+        py_tuple = PyTuple_Pack(2, PyUnicode_FromString(kv_list[c].key),
+                                   PyUnicode_FromString(kv_list[c].value));
+        if (py_tuple == NULL) {
+            Py_XDECREF(py_list);
+            return NULL;
+        };
+        ret = PyList_Append(py_list, py_tuple);
         if (ret != 0) {
-            Py_XDECREF(py_dict);
+            Py_XDECREF(py_list);
             return NULL;
         }
     }
 
-    return py_dict;
+    return py_list;
 }
 
 static int do_getorigbyname(enum lookup_type type, PyObject *py_result,
@@ -185,7 +191,7 @@ static int do_getorigbyname(enum lookup_type type, PyObject *py_result,
     const char *name;
     enum sss_id_type id_type;
     struct sss_nss_kv *kv_list;
-    PyObject *result_dict;
+    PyObject *result_list;
 
     name = py_string_or_unicode_as_string(py_name);
     if (name == NULL) {
@@ -204,12 +210,12 @@ static int do_getorigbyname(enum lookup_type type, PyObject *py_result,
     }
 
     if (ret == 0) {
-        result_dict = kv_list_to_dict(kv_list);
-        if (result_dict == NULL) {
+        result_list = kv_list_to_list_of_tuple(kv_list);
+        if (result_list == NULL) {
             return ENOMEM;
         }
-        ret = add_dict(py_result, py_name, PyUnicode_FromString(SSS_DICT_KEY),
-                       result_dict, PYNUMBER_FROMLONG(id_type));
+        ret = add_dict(py_result, py_name, PyUnicode_FromString(SSS_KVLIST_KEY),
+                       result_list, PYNUMBER_FROMLONG(id_type));
     }
     sss_nss_free_kv(kv_list);
 
@@ -790,7 +796,7 @@ initpysss_nss_idmap(void)
     if (PyModule_AddStringConstant(module, "TYPE_KEY", SSS_TYPE_KEY) == -1) {
         MODINITERROR(module);
     }
-    if (PyModule_AddStringConstant(module, "DICT_KEY", SSS_DICT_KEY) == -1) {
+    if (PyModule_AddStringConstant(module, "DICT_KEY", SSS_KVLIST_KEY) == -1) {
         MODINITERROR(module);
     }
 
