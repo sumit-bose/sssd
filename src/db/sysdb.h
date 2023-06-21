@@ -284,6 +284,7 @@
                            SYSDB_UUID, \
                            ORIGINALAD_PREFIX SYSDB_NAME, \
                            ORIGINALAD_PREFIX SYSDB_GIDNUM, \
+                           SYSDB_GROUP_TYPE, \
                            NULL}
 
 #define SYSDB_NETGR_ATTRS {SYSDB_NAME, SYSDB_NETGROUP_TRIPLE, \

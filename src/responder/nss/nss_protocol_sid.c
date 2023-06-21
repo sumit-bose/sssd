@@ -360,6 +360,7 @@ sss_nss_protocol_fill_orig(struct sss_nss_ctx *nss_ctx,
                                  SYSDB_USER_EMAIL,
                                  SYSDB_ORIG_DN,
                                  SYSDB_ORIG_MEMBEROF,
+                                 SYSDB_GROUP_TYPE,
                                  NULL };
 
     if (result->count != 1) {

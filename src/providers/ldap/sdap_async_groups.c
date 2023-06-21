@@ -513,6 +513,7 @@ static int sdap_save_group(TALLOC_CTX *memctx,
     bool need_filter;
     char *sid_str;
     struct sss_domain_info *subdomain;
+    int32_t ad_group_type;
 
     tmpctx = talloc_new(NULL);
     if (!tmpctx) {
@@ -592,6 +593,16 @@ static int sdap_save_group(TALLOC_CTX *memctx,
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE,
                   "Error: Failed to mark group as non-POSIX!\n");
+            goto done;
+        }
+    }
+
+    /* Missing group type is ok */
+    ret = sysdb_attrs_get_int32_t(attrs, SYSDB_GROUP_TYPE, &ad_group_type);
+    if (ret == EOK) {
+        ret = sysdb_attrs_add_long(group_attrs, SYSDB_GROUP_TYPE, (long) ad_group_type);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Error: Failed to add group type!\n");
             goto done;
         }
     }
