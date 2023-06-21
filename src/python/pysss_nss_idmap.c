@@ -47,7 +47,7 @@ enum lookup_type {
     LISTBYCERT
 };
 
-static int add_dict_to_list(PyObject *py_list, PyObject *res_type,
+static int add_dict_to_list(PyObject *py_list, size_t index, PyObject *res_type,
                             PyObject *res, PyObject *id_type)
 {
     int ret;
@@ -70,7 +70,7 @@ static int add_dict_to_list(PyObject *py_list, PyObject *res_type,
         return ret;
     }
 
-    ret = PyList_Append(py_list, py_dict);
+    ret = PyList_SetItem(py_list, index, py_dict);
 
     return ret;
 }
@@ -162,7 +162,8 @@ static PyObject *kv_list_to_list_of_tuple(struct sss_nss_kv *kv_list)
     PyObject *py_tuple;
     size_t c;
 
-    py_list =  PyList_New(0);
+    for (c = 0; kv_list[c].key != NULL; c++);
+    py_list =  PyList_New(c);
     if (py_list == NULL) {
         return NULL;
     }
@@ -174,7 +175,7 @@ static PyObject *kv_list_to_list_of_tuple(struct sss_nss_kv *kv_list)
             Py_XDECREF(py_list);
             return NULL;
         };
-        ret = PyList_Append(py_list, py_tuple);
+        ret = PyList_SetItem(py_list, c, py_tuple);
         if (ret != 0) {
             Py_XDECREF(py_list);
             return NULL;
@@ -188,7 +189,7 @@ static int do_getorigbyname(enum lookup_type type, PyObject *py_result,
                             PyObject *py_name)
 {
     int ret;
-    const char *name;
+    char *name;
     enum sss_id_type id_type;
     struct sss_nss_kv *kv_list;
     PyObject *result_list;
@@ -339,13 +340,14 @@ static int do_getlistbycert(PyObject *py_result, PyObject *py_cert)
 
         PyObject *py_list;
 
-        py_list =  PyList_New(0);
+        for (c = 0; names[c] != NULL; c++);
+        py_list =  PyList_New(c);
         if (py_list == NULL) {
             return ENOMEM;
         }
 
         for (c = 0; names[c] != NULL; c++) {
-            ret = add_dict_to_list(py_list,
+            ret = add_dict_to_list(py_list, c,
                                    PyUnicode_FromString(SSS_NAME_KEY),
                                    PyUnicode_FromString(names[c]),
                                    PYNUMBER_FROMLONG(id_types[c]));
