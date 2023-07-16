@@ -848,6 +848,7 @@ errno_t pam_get_auth_types(struct pam_data *pd,
     int ret;
     struct response_data *resp;
     struct pam_resp_auth_type types = {0};
+    bool found_cert_info;
 
     resp = pd->resp_list;
     while (resp != NULL) {
@@ -856,7 +857,8 @@ errno_t pam_get_auth_types(struct pam_data *pd,
             types.otp_auth = true;
             break;
         case SSS_PAM_CERT_INFO:
-            types.cert_auth = true;
+        case SSS_PAM_CERT_INFO_WITH_HINT:
+            found_cert_info = true;
             break;
         case SSS_PAM_PASSKEY_INFO:
         case SSS_PAM_PASSKEY_KRB_INFO:
@@ -866,7 +868,7 @@ errno_t pam_get_auth_types(struct pam_data *pd,
             types.password_auth = true;
             break;
         case SSS_CERT_AUTH_PROMPTING:
-            /* currently not used */
+            types.cert_auth = true;
             break;
         default:
             break;
@@ -878,6 +880,21 @@ errno_t pam_get_auth_types(struct pam_data *pd,
         /* If the backend cannot determine which authentication types are
          * available the default would be to prompt for a password. */
         types.password_auth = true;
+    }
+
+    if (found_cert_info && !types.cert_auth) {
+        resp = pd->resp_list;
+        while (resp != NULL) {
+            switch (resp->type) {
+            case SSS_PAM_CERT_INFO:
+            case SSS_PAM_CERT_INFO_WITH_HINT:
+                resp->do_not_send_to_client = true;
+                break;
+            default:
+                break;
+            }
+            resp = resp->next;
+        }
     }
 
     DEBUG(SSSDBG_TRACE_ALL, "Authentication types for user [%s] and service "
@@ -2979,7 +2996,7 @@ static void pam_dom_forwarder(struct pam_auth_req *preq)
     struct ldb_result *cert_user_objs;
     size_t c;
     const char *domain_cdb;
-    char *local_policy;
+    char *local_policy = NULL;
     bool found = false;
 
     tmp_ctx = talloc_new(NULL);
@@ -3036,16 +3053,9 @@ static void pam_dom_forwarder(struct pam_auth_req *preq)
                                     CONFDB_DOMAIN_LOCAL_AUTH_POLICY,
                                     "match", &local_policy);
             if (ret != EOK) {
-                DEBUG(SSSDBG_FATAL_FAILURE, "Failed to get the confdb local_auth_policys\n");
+                DEBUG(SSSDBG_FATAL_FAILURE, "Failed to get the confdb local_auth_policy\n");
                 talloc_free(tmp_ctx);
                 preq->pd->pam_status = PAM_AUTH_ERR;
-                return;
-            }
-
-            if (strcasecmp(local_policy, "only") == 0) {
-                talloc_free(tmp_ctx);
-                DEBUG(SSSDBG_IMPORTANT_INFO, "Local auth only set, skipping online auth\n");
-                pam_reply(preq);
                 return;
             }
         }
@@ -3114,6 +3124,22 @@ static void pam_dom_forwarder(struct pam_auth_req *preq)
         }
 
         if (found) {
+            if (local_policy != NULL && strcasecmp(local_policy, "only") == 0) {
+                talloc_free(tmp_ctx);
+                DEBUG(SSSDBG_IMPORTANT_INFO, "Local auth only set, skipping online auth\n");
+                if (preq->pd->cmd == SSS_PAM_PREAUTH) {
+                    preq->pd->pam_status = PAM_SUCCESS;
+                } else if (preq->pd->cmd == SSS_PAM_AUTHENTICATE
+                                && IS_SC_AUTHTOK(preq->pd->authtok)
+                                && preq->cert_auth_local) {
+                    preq->pd->pam_status = PAM_SUCCESS;
+                    preq->callback = pam_reply;
+                }
+
+                pam_reply(preq);
+                return;
+            }
+
             /* We are done if we do not have to call the backend */
             if (preq->pd->cmd == SSS_PAM_AUTHENTICATE
                     && preq->cert_auth_local) {
@@ -3135,6 +3161,20 @@ static void pam_dom_forwarder(struct pam_auth_req *preq)
                 return;
             }
         }
+    }
+
+    if (local_policy != NULL && strcasecmp(local_policy, "only") == 0) {
+        talloc_free(tmp_ctx);
+        DEBUG(SSSDBG_IMPORTANT_INFO, "Local auth only set, skipping online auth\n");
+        if (preq->pd->cmd == SSS_PAM_PREAUTH) {
+            preq->pd->pam_status = PAM_SUCCESS;
+        } else if (preq->pd->cmd == SSS_PAM_AUTHENTICATE && IS_SC_AUTHTOK(preq->pd->authtok)) {
+            /* Trigger offline smartcardcard autheitcation */
+            preq->pd->pam_status = PAM_AUTHINFO_UNAVAIL;
+        }
+
+        pam_reply(preq);
+        return;
     }
 
     preq->callback = pam_reply;
