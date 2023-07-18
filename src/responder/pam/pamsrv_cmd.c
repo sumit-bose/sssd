@@ -841,6 +841,23 @@ done:
     return ret;
 }
 
+static void do_not_send_cert_info(struct pam_data *pd)
+{
+    struct response_data *resp;
+
+    resp = pd->resp_list;
+    while (resp != NULL) {
+        switch (resp->type) {
+        case SSS_PAM_CERT_INFO:
+        case SSS_PAM_CERT_INFO_WITH_HINT:
+            resp->do_not_send_to_client = true;
+            break;
+        default:
+            break;
+        }
+        resp = resp->next;
+    }
+}
 
 errno_t pam_get_auth_types(struct pam_data *pd,
                            struct pam_resp_auth_type *_auth_types)
@@ -883,18 +900,7 @@ errno_t pam_get_auth_types(struct pam_data *pd,
     }
 
     if (found_cert_info && !types.cert_auth) {
-        resp = pd->resp_list;
-        while (resp != NULL) {
-            switch (resp->type) {
-            case SSS_PAM_CERT_INFO:
-            case SSS_PAM_CERT_INFO_WITH_HINT:
-                resp->do_not_send_to_client = true;
-                break;
-            default:
-                break;
-            }
-            resp = resp->next;
-        }
+        do_not_send_cert_info(pd);
     }
 
     DEBUG(SSSDBG_TRACE_ALL, "Authentication types for user [%s] and service "
@@ -1011,6 +1017,10 @@ static errno_t pam_eval_local_auth_policy(TALLOC_CTX *mem_ctx,
                      "skipping.\n", opts[c]);
             }
         }
+    }
+
+    if (!sc_allow) {
+        do_not_send_cert_info(pd);
     }
 
     *_sc_allow = sc_allow;
