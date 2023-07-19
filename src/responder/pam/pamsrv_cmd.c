@@ -1017,12 +1017,24 @@ static errno_t pam_eval_local_auth_policy(TALLOC_CTX *mem_ctx,
                      "skipping.\n", opts[c]);
             }
         }
-    }
 
-    /* if passkey is enabled but Smartcard authentication is not but possible,
-     * the cert info data has to be remove as well. */
-    if (!sc_allow) {
-        do_not_send_cert_info(pd);
+        /* if passkey is enabled but local Smartcard authentication is not but
+         * possible, the cert info data has to be remove as well if only local
+         * Smartcard authentication is possible. If Smartcard authentication
+         * is possible on the server side we have to keep it because the
+         * 'enable' option should only add local methods but not reject remote
+         * ones. */
+        if (!sc_allow) {
+            /* We do not need the auth_types here but the call will remove
+             * the cert info data if the server does not support Smartcard
+             * authentication. */
+            ret = pam_get_auth_types(pd, &auth_types);
+            if (ret != EOK) {
+                DEBUG(SSSDBG_OP_FAILURE,
+                      "Failed to get authentication types\n");
+                goto done;
+            }
+        }
     }
 
     *_sc_allow = sc_allow;
