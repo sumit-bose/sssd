@@ -4897,9 +4897,11 @@ oidc_child_SOURCES = \
     src/oidc_child/oidc_child.c \
     src/oidc_child/oidc_child_curl.c \
     src/oidc_child/oidc_child_json.c \
+    src/oidc_child/oidc_child_id.c \
     src/util/atomic_io.c \
     src/util/memory.c \
     src/util/strtonum.c \
+    src/util/sss_chain_id.c \
     $(NULL)
 oidc_child_CFLAGS = \
     $(AM_CFLAGS) \
