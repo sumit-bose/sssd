@@ -413,6 +413,10 @@ sssdlib_LTLIBRARIES += \
     libsss_ad.la
 endif
 
+sssdlib_LTLIBRARIES += \
+    libsss_idp.la \
+    $(NULL)
+
 if HAVE_INOTIFY
 if BUILD_FILES_PROVIDER
 sssdlib_LTLIBRARIES += \
@@ -903,6 +907,10 @@ dist_noinst_HEADERS = \
     src/providers/ad/ad_subdomains.h \
     src/providers/ad/ad_resolver.h \
     src/providers/proxy/proxy.h \
+    src/providers/idp/idp_auth.h \
+    src/providers/idp/idp_common.h \
+    src/providers/idp/idp_id.h \
+    src/providers/idp/idp_opts.h \
     src/tools/tools_util.h \
     src/resolv/async_resolv.h \
     src/tests/common.h \
@@ -4694,6 +4702,27 @@ libsss_ad_la_LIBADD = \
 libsss_ad_la_LDFLAGS = \
     -avoid-version \
     -module
+
+libsss_idp_la_SOURCES = \
+    src/providers/idp/idp_init.c \
+    src/providers/idp/idp_opts.c \
+    src/providers/idp/idp_id.c \
+    src/providers/idp/idp_auth.c \
+    src/providers/idp/idp_online_check.c \
+    $(NULL)
+
+libsss_idp_la_CFLAGS = \
+    $(AM_CFLAGS) \
+    $(NULL)
+
+libsss_ipd_la_LIBADD = \
+    $(SSSD_INTERNAL_LTLIBS) \
+    $(NULL)
+
+libsss_idp_la_LDFLAGS = \
+    -avoid-version \
+    -module \
+    $(NULL)
 
 krb5_child_SOURCES = \
     src/providers/krb5/krb5_child.c \
