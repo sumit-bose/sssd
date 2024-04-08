@@ -4709,6 +4709,7 @@ libsss_idp_la_SOURCES = \
     src/providers/idp/idp_id.c \
     src/providers/idp/idp_auth.c \
     src/providers/idp/idp_online_check.c \
+    src/providers/idp/oidc_child_handler.c \
     $(NULL)
 
 libsss_idp_la_CFLAGS = \

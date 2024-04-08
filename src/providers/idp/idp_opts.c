@@ -26,5 +26,7 @@
 
 struct dp_option default_idp_opts[] = {
     { "idp_openid_configuration", DP_OPT_STRING, NULL_STRING, NULL_STRING },
+    { "idp_request_timeout", DP_OPT_NUMBER, { .number = 10 }, NULL_NUMBER },
+    { "idp_client_secret", DP_OPT_STRING, NULL_STRING, NULL_STRING },
     DP_OPTION_TERMINATOR
 };

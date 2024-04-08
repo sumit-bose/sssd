@@ -29,6 +29,7 @@
 #include "providers/idp/idp_common.h"
 
 struct idp_id_ctx {
+    struct idp_init_ctx *init_ctx;
     struct dp_option *idp_options;
 };
 
