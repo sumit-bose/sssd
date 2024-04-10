@@ -27,10 +27,18 @@
 #define _IDP_ID_H_
 
 #include "providers/idp/idp_common.h"
+#include "lib/idmap/sss_idmap.h"
 
 struct idp_id_ctx {
+    struct be_ctx *be_ctx;
     struct idp_init_ctx *init_ctx;
     struct dp_option *idp_options;
+    struct sss_idmap_ctx *idmap_ctx;
+
+    const char *client_id;
+    const char *client_secret;
+    const char *token_endpoint;
+    const char *scope;
 };
 
 struct tevent_req *
@@ -43,4 +51,7 @@ errno_t idp_account_info_handler_recv(TALLOC_CTX *mem_ctx,
                                       struct tevent_req *req,
                                       struct dp_reply_std *data);
 
+
+errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
+                      uint8_t *buf, ssize_t buflen);
 #endif

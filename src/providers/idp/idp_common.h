@@ -35,7 +35,10 @@
 enum krb5_opts {
     IDP_OPENID_CONFIGURATION = 0,
     IDP_REQ_TIMEOUT,
+    IDP_CLIENT_ID,
     IDP_CLIENT_SECRET,
+    IDP_TOKEN_ENDPOINT,
+    IDP_SCOPE,
 
     IDP_OPTS
 };
@@ -43,7 +46,8 @@ enum krb5_opts {
 struct idp_id_ctx;
 
 struct idp_req {
-    struct idp_id_ctx *idp_ctx;
+    struct idp_id_ctx *idp_id_ctx;
+    const char **oidc_child_extra_args;
 };
 
 

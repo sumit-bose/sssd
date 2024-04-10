@@ -28,8 +28,11 @@
 #include "src/providers/idp/idp_opts.h"
 #include "src/providers/idp/idp_id.h"
 #include "src/providers/idp/idp_auth.h"
+#include "lib/idmap/sss_idmap.h"
+#include "util/util_sss_idmap.h"
 
 struct idp_init_ctx {
+    struct be_ctx *be_ctx;
     struct dp_option *opts;
     struct idp_id_ctx *id_ctx;
     struct idp_auth_ctx *auth_ctx;
@@ -75,6 +78,8 @@ errno_t sssm_idp_init(TALLOC_CTX *mem_ctx,
         return ENOMEM;
     }
 
+    init_ctx->be_ctx = be_ctx;
+
     /* Always initialize options since it is needed everywhere. */
     ret = idp_get_options(init_ctx, be_ctx->cdb, be_ctx->conf_path,
                           &init_ctx->opts);
@@ -95,6 +100,7 @@ done:
 
     return ret;
 }
+
 errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
                          struct be_ctx *be_ctx,
                          void *module_data,
@@ -102,6 +108,9 @@ errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
 {
     struct idp_init_ctx *init_ctx;
     struct idp_id_ctx *id_ctx;
+    errno_t ret;
+    enum idmap_error_code err;
+    struct sss_idmap_range id_range;
 
     init_ctx = talloc_get_type(module_data, struct idp_init_ctx);
 
@@ -112,8 +121,74 @@ errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
         return ENOMEM;
     }
 
+    id_ctx->be_ctx = be_ctx;
     id_ctx->init_ctx = init_ctx;
     id_ctx->idp_options = init_ctx->opts;
+
+    id_ctx->client_id = dp_opt_get_cstring(id_ctx->idp_options, IDP_CLIENT_ID);
+    if (id_ctx->client_id == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_client_id'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    id_ctx->client_secret = dp_opt_get_cstring(id_ctx->idp_options,
+                                               IDP_CLIENT_SECRET);
+    if (id_ctx->client_secret == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_client_secret'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    id_ctx->token_endpoint = dp_opt_get_cstring(id_ctx->idp_options,
+                                                    IDP_TOKEN_ENDPOINT);
+    if (id_ctx->token_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_token_endpoint'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    id_ctx->scope = dp_opt_get_cstring(id_ctx->idp_options, IDP_SCOPE);
+    if (id_ctx->scope == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_scope'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    err = sss_idmap_init(sss_idmap_talloc, init_ctx, sss_idmap_talloc_free,
+                         &id_ctx->idmap_ctx);
+    if (err != IDMAP_SUCCESS) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Failed in initialize id-mapping: [%s].\n",
+                                   idmap_error_string(err));
+        ret = EINVAL;
+        goto done;
+    }
+
+    err = sss_idmap_calculate_range(id_ctx->idmap_ctx, id_ctx->token_endpoint /* TODO: use better value */,
+                                    NULL, &id_range);
+    if (err != IDMAP_SUCCESS) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Failed to calculate id range for [%s]: [%s].\n",
+              id_ctx->token_endpoint, idmap_error_string(err));
+        ret = EINVAL;
+        goto done;
+    }
+
+    err = sss_idmap_add_gen_domain_ex(id_ctx->idmap_ctx, be_ctx->domain->name,
+                                      id_ctx->token_endpoint, &id_range,
+                                      NULL, NULL, NULL, NULL, 0, false);
+    if (err != IDMAP_SUCCESS) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Failed to add id-mapping domain [%s]: [%s].\n",
+              be_ctx->domain->name, idmap_error_string(err));
+        ret = EINVAL;
+        goto done;
+    }
+
 
     dp_set_method(dp_methods, DPM_ACCOUNT_HANDLER,
                   idp_account_info_handler_send, idp_account_info_handler_recv, id_ctx,
@@ -127,7 +202,14 @@ errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
                   default_account_domain_send, default_account_domain_recv, NULL,
                   void, struct dp_get_acct_domain_data, struct dp_reply_std);
 
-    return EOK;
+    ret = EOK;
+
+done:
+    if (ret != EOK) {
+        talloc_free(id_ctx);
+    }
+
+    return ret;
 }
 
 errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
@@ -139,7 +221,16 @@ errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
     struct idp_auth_ctx *auth_ctx;
 
     init_ctx = talloc_get_type(module_data, struct idp_init_ctx);
-    auth_ctx = init_ctx->auth_ctx;
+
+    auth_ctx = talloc_zero(init_ctx, struct idp_auth_ctx);
+    if (auth_ctx == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Failed to allocate memory for auth context.\n");
+        return ENOMEM;
+    }
+
+    auth_ctx->be_ctx = be_ctx;
+    auth_ctx->idp_options = init_ctx->opts;
 
     dp_set_method(dp_methods, DPM_AUTH_HANDLER,
                   idp_pam_auth_handler_send, idp_pam_auth_handler_recv, auth_ctx,

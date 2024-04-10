@@ -29,6 +29,7 @@
 #include "providers/idp/idp_common.h"
 
 struct idp_auth_ctx {
+    struct be_ctx *be_ctx;
     struct dp_option *idp_options;
 };
 

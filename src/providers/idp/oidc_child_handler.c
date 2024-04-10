@@ -135,7 +135,6 @@ static errno_t fork_child(struct tevent_context *ev,
     TALLOC_CTX *tmp_ctx;
     int pipefd_to_child[2] = PIPE_INIT;
     int pipefd_from_child[2] = PIPE_INIT;
-    const char **oidc_child_extra_args = NULL;
     struct child_io_fds *io;
     pid_t pid = 0;
     errno_t ret;
@@ -144,14 +143,6 @@ static errno_t fork_child(struct tevent_context *ev,
     if (tmp_ctx == NULL) {
         return ENOMEM;
     }
-
-#if 0
-    ret = set_extra_args(tmp_ctx, kr->krb5_ctx, kr->dom, &oidc_child_extra_args);
-    if (ret != EOK) {
-        DEBUG(SSSDBG_OP_FAILURE, "set_extra_args failed.\n");
-        goto done;
-    }
-#endif
 
     ret = pipe(pipefd_from_child);
     if (ret == -1) {
@@ -175,7 +166,7 @@ static errno_t fork_child(struct tevent_context *ev,
         exec_child_ex(tmp_ctx,
                       pipefd_to_child, pipefd_from_child,
                       OIDC_CHILD, OIDC_CHILD_LOG_FILE,
-                      oidc_child_extra_args, false,
+                      idp_req->oidc_child_extra_args, false,
                       STDIN_FILENO, STDOUT_FILENO);
 
         /* We should never get here */
@@ -218,7 +209,7 @@ static errno_t fork_child(struct tevent_context *ev,
     }
 
     /* Steal the io pair so it can outlive this request if needed. */
-    talloc_steal(idp_req->idp_ctx, io);
+    talloc_steal(idp_req->idp_id_ctx, io);
 
     *_child_pid = pid;
     *_io = io;
@@ -249,7 +240,7 @@ static errno_t create_send_buffer(struct idp_req *idp_req,
         return ENOMEM;
     }
 
-    client_secret = dp_opt_get_cstring(idp_req->idp_ctx->idp_options,
+    client_secret = dp_opt_get_cstring(idp_req->idp_id_ctx->idp_options,
                                        IDP_CLIENT_SECRET);
     if (client_secret == NULL || *client_secret == '\0') {
         ret = EOK;
@@ -315,7 +306,7 @@ struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
 
     /* Setup timeout. If failed, terminate the child process. */
     ret = activate_child_timeout_handler(req, ev,
-                                         dp_opt_get_int(idp_req->idp_ctx->idp_options,
+                                         dp_opt_get_int(idp_req->idp_id_ctx->idp_options,
                                                         IDP_REQ_TIMEOUT));
     if (ret != EOK) {
         DEBUG(SSSDBG_CRIT_FAILURE, "Unable to setup child timeout "
@@ -325,8 +316,8 @@ struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
     }
 
     state->io->in_use = true;
-    subreq = write_pipe_safe_send(state, ev, buf->data, buf->size,
-                                  state->io->write_to_child_fd);
+    subreq = write_pipe_send(state, ev, buf->data, buf->size,
+                             state->io->write_to_child_fd);
     if (!subreq) {
         ret = ENOMEM;
         goto fail;
@@ -349,14 +340,14 @@ static void handle_oidc_child_send_done(struct tevent_req *subreq)
                                                 struct handle_oidc_child_state);
     int ret;
 
-    ret = write_pipe_safe_recv(subreq);
+    ret = write_pipe_recv(subreq);
     talloc_zfree(subreq);
     if (ret != EOK) {
         goto done;
     }
 
-    subreq = read_pipe_safe_send(state, state->ev,
-                                 state->io->read_from_child_fd);
+    subreq = read_pipe_send(state, state->ev,
+                            state->io->read_from_child_fd);
     if (!subreq) {
         ret = ENOMEM;
         goto done;
@@ -384,7 +375,7 @@ static void handle_oidc_child_done(struct tevent_req *subreq)
 
     talloc_zfree(state->timeout_handler);
 
-    ret = read_pipe_safe_recv(subreq, state, &state->buf, &state->len);
+    ret = read_pipe_recv(subreq, state, &state->buf, &state->len);
     state->io->in_use = false;
     talloc_zfree(subreq);
     if (ret != EOK) {

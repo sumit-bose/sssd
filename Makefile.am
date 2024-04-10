@@ -1410,7 +1410,7 @@ libsss_idmap_la_SOURCES = \
     src/util/murmurhash3.c
 libsss_idmap_la_LDFLAGS = \
     -Wl,--version-script,$(srcdir)/src/lib/idmap/sss_idmap.exports \
-    -version-info 5:1:5
+    -version-info 6:0:6
 
 dist_noinst_DATA += src/lib/idmap/sss_idmap.exports
 
@@ -4707,6 +4707,7 @@ libsss_idp_la_SOURCES = \
     src/providers/idp/idp_init.c \
     src/providers/idp/idp_opts.c \
     src/providers/idp/idp_id.c \
+    src/providers/idp/idp_id_eval.c \
     src/providers/idp/idp_auth.c \
     src/providers/idp/idp_online_check.c \
     src/providers/idp/oidc_child_handler.c \
@@ -4714,10 +4715,13 @@ libsss_idp_la_SOURCES = \
 
 libsss_idp_la_CFLAGS = \
     $(AM_CFLAGS) \
+    $(JANSSON_CFLAGS) \
     $(NULL)
 
-libsss_ipd_la_LIBADD = \
+libsss_idp_la_LIBADD = \
     $(SSSD_INTERNAL_LTLIBS) \
+    libsss_idmap.la \
+    $(JANSSON_LIBS) \
     $(NULL)
 
 libsss_idp_la_LDFLAGS = \
