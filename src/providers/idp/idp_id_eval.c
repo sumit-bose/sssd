@@ -93,6 +93,64 @@ done:
     return ret;
 }
 
+errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *user)
+{
+    // sdap_save_group
+    errno_t ret;
+    json_t *group_name = NULL;
+    json_t *uuid = NULL;
+    int cache_timeout;
+    struct sss_domain_info *dom;
+    gid_t gid;
+    char *fqdn = NULL;
+    enum idmap_error_code err;
+
+    dom = idp_id_ctx->be_ctx->domain;
+
+
+    group_name = json_object_get(user, "displayName");
+    if (!json_is_string(group_name)) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "JSON user object does not contain 'displayName' string.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    fqdn = sss_create_internal_fqname(idp_id_ctx, json_string_value(group_name),
+                                      dom->name);
+    if (fqdn == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to generate fully-qualified name.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+    uuid = json_object_get(user, "id");
+    if (!json_is_string(uuid)) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "JSON user object does not contain 'id' string.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    err = sss_idmap_gen_to_unix(idp_id_ctx->idmap_ctx,
+                                idp_id_ctx->token_endpoint,
+                                json_string_value(uuid), &gid);
+    if (err != IDMAP_SUCCESS) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to generate GID for [%s][%s].\n",
+                                 fqdn, json_string_value(uuid));
+        ret = EIO;
+        goto done;
+    }
+
+    cache_timeout = dom->user_timeout;
+    ret = sysdb_store_group(dom, fqdn, gid, NULL, cache_timeout, 0);
+
+done:
+    talloc_free(fqdn);
+
+    return ret;
+}
+
 errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
                       uint8_t *buf, ssize_t buflen)
 {
@@ -142,3 +200,60 @@ done:
     return ret;
 }
 
+typedef errno_t (store_func_t)(struct idp_id_ctx *idp_id_ctx, json_t *obj);
+
+errno_t eval_obj_buf(struct idp_id_ctx *idp_id_ctx,
+                     const char *type, store_func_t *store_func,
+                     uint8_t *buf, ssize_t buflen)
+{
+    errno_t ret;
+    json_t *data = NULL;
+    json_error_t json_error;
+    char *tmp = NULL;
+    size_t index;
+    json_t *obj;
+
+    data = json_loadb((char *) buf, buflen, 0, &json_error);
+    if (data == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "Failed to parse %s data on line [%d]: [%s].\n",
+              type, json_error.line, json_error.text);
+        ret = EINVAL;
+        goto done;
+    }
+
+    if (!json_is_array(data)) {
+        DEBUG(SSSDBG_OP_FAILURE, "Array of %ss expected.\n", type);
+        ret = EINVAL;
+        goto done;
+    }
+
+    tmp = json_dumps(data, 0);
+    if (tmp != NULL) {
+        DEBUG(SSSDBG_TRACE_ALL, "JSON: %s\n", tmp);
+        free(tmp);
+    } else {
+        DEBUG(SSSDBG_OP_FAILURE, "json_dumps() failed.\n");
+    }
+
+    json_array_foreach(data, index, obj) {
+        ret = store_func(idp_id_ctx, obj);
+        if (ret != EOK) {
+            tmp = json_dumps(obj, 0);
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to store JSON %s [%s].\n", type, tmp);
+            free(tmp);
+        }
+    }
+
+    ret = EOK;
+done:
+    json_decref(data);
+
+    return ret;
+}
+
+errno_t eval_group_buf(struct idp_id_ctx *idp_id_ctx,
+                       uint8_t *buf, ssize_t buflen)
+{
+    return eval_obj_buf(idp_id_ctx, "group", store_json_group, buf, buflen);
+}

@@ -54,4 +54,7 @@ errno_t idp_account_info_handler_recv(TALLOC_CTX *mem_ctx,
 
 errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
                       uint8_t *buf, ssize_t buflen);
+
+errno_t eval_group_buf(struct idp_id_ctx *idp_id_ctx,
+                       uint8_t *buf, ssize_t buflen);
 #endif

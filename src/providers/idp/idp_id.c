@@ -31,7 +31,15 @@
 
 
 
+enum idp_lookup_type {
+    IDP_LOOKUP_USER,
+    IDP_LOOKUP_GROUP,
+    IDP_LOOKUP_USER_GROUPS,
+    IDP_LOOKUP_GROUP_MEMBERS
+};
+
 errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
+                            enum idp_lookup_type lookup_type,
                             const char *filter_value, int filter_type,
                             const char ***oidc_child_extra_args)
 {
@@ -57,7 +65,24 @@ errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
         return ENOMEM;
     }
 
-    extra_args[c] = talloc_strdup(extra_args, "--get-user");
+    switch (lookup_type) {
+    case IDP_LOOKUP_USER:
+        extra_args[c] = talloc_strdup(extra_args, "--get-user");
+        break;
+    case IDP_LOOKUP_GROUP:
+        extra_args[c] = talloc_strdup(extra_args, "--get-group");
+        break;
+    case IDP_LOOKUP_USER_GROUPS:
+        extra_args[c] = talloc_strdup(extra_args, "--get-user-groups");
+        break;
+    case IDP_LOOKUP_GROUP_MEMBERS:
+        extra_args[c] = talloc_strdup(extra_args, "--get-group-members");
+        break;
+    default:
+        DEBUG(SSSDBG_OP_FAILURE, "Unsupported lookup type [%d].\n",
+                                 lookup_type);
+        return EINVAL;
+    }
     if (extra_args[c] == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
         ret = ENOMEM;
@@ -141,6 +166,142 @@ done:
     return ret;
 }
 
+struct idp_type_get_state {
+    struct idp_req *idp_req;
+    int dp_error;
+    int idp_ret;
+    enum idp_lookup_type lookup_type;
+};
+
+static void idp_type_get_done(struct tevent_req *subreq);
+
+struct tevent_req *idp_type_get_send(TALLOC_CTX *memctx,
+                                      struct tevent_context *ev,
+                                      struct idp_id_ctx *idp_id_ctx,
+                                      enum idp_lookup_type lookup_type,
+                                      const char *filter_value,
+                                      int filter_type,
+                                      const char *extra_value,
+                                      bool noexist_delete,
+                                      bool set_non_posix)
+{
+    struct tevent_req *req;
+    struct tevent_req *subreq;
+    struct idp_type_get_state *state;
+    int ret;
+
+    req = tevent_req_create(memctx, &state, struct idp_type_get_state);
+    if (req == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "tevent_req_create() failed.\n");
+        return NULL;
+    }
+
+    state->dp_error = DP_ERR_FATAL;
+    state->idp_ret = ENODATA;
+    state->lookup_type = lookup_type;
+
+    state->idp_req = talloc_zero(state, struct idp_req);
+    if (state->idp_req == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to allocate memory for IdP request.\n");
+        ret = ENOMEM;
+        goto immediately;
+    }
+
+    state->idp_req->idp_id_ctx = idp_id_ctx;
+
+    ret = set_oidc_extra_args(state, idp_id_ctx, lookup_type, filter_value,
+                              filter_type,
+                              &state->idp_req->oidc_child_extra_args);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
+        goto immediately;
+    }
+
+    subreq = handle_oidc_child_send(state, ev, state->idp_req);
+    if (subreq == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "handle_oidc_child_send() failed.\n");
+        ret = ENOMEM;
+        goto immediately;
+    }
+    tevent_req_set_callback(subreq, idp_type_get_done, req);
+
+    return req;
+
+immediately:
+    if (ret != EOK) {
+        tevent_req_error(req, ret);
+    } else {
+        tevent_req_done(req);
+    }
+    return tevent_req_post(req, ev);
+}
+
+static void idp_type_get_done(struct tevent_req *subreq)
+{
+    struct idp_type_get_state *state;
+    struct tevent_req *req;
+    errno_t ret;
+
+    uint8_t *buf;
+    ssize_t buflen;
+
+    req = tevent_req_callback_data(subreq, struct tevent_req);
+    state = tevent_req_data(req, struct idp_type_get_state);
+
+    ret = handle_oidc_child_recv(subreq, state, &buf, &buflen);
+    talloc_zfree(subreq);
+    if (ret != EOK) {
+        state->dp_error = DP_ERR_FATAL;
+        tevent_req_error(req, ret);
+        return;
+    }
+
+    DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
+    switch (state->lookup_type) {
+    case IDP_LOOKUP_USER:
+        ret = eval_user_buf(state->idp_req->idp_id_ctx, buf, buflen);
+        break;
+    case IDP_LOOKUP_GROUP:
+        ret = eval_group_buf(state->idp_req->idp_id_ctx, buf, buflen);
+        break;
+    case IDP_LOOKUP_USER_GROUPS:
+    case IDP_LOOKUP_GROUP_MEMBERS:
+    default:
+        DEBUG(SSSDBG_OP_FAILURE, "Unsupported lookup type [%d].\n",
+                                 state->lookup_type);
+        ret = EINVAL;
+    }
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "Failed to evaluate user data returned by oidc_child.\n");
+        state->dp_error = DP_ERR_FATAL;
+        tevent_req_error(req, ret);
+        return;
+    }
+
+    tevent_req_done(req);
+}
+
+
+int idp_type_get_recv(struct tevent_req *req, int *dp_error_out, int *idp_ret)
+{
+    struct idp_type_get_state *state;
+
+    state = tevent_req_data(req, struct idp_type_get_state);
+
+    if (dp_error_out != NULL) {
+        *dp_error_out = state->dp_error;
+    }
+
+    if (idp_ret != NULL) {
+        *idp_ret = state->idp_ret;
+    }
+
+    TEVENT_REQ_RETURN_ON_ERROR(req);
+
+    return EOK;
+}
+
 struct idp_users_get_state {
     struct idp_req *idp_req;
     int dp_error;
@@ -181,7 +342,8 @@ struct tevent_req *idp_users_get_send(TALLOC_CTX *memctx,
 
     state->idp_req->idp_id_ctx = idp_id_ctx;
 
-    ret = set_oidc_extra_args(state, idp_id_ctx, filter_value, filter_type,
+    ret = set_oidc_extra_args(state, idp_id_ctx, IDP_LOOKUP_USER,
+                              filter_value, filter_type,
                               &state->idp_req->oidc_child_extra_args);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
@@ -269,12 +431,16 @@ struct tevent_req *idp_groups_get_send(TALLOC_CTX *memctx,
                                        bool no_members,
                                        bool set_non_posix)
 {
-    return NULL;
+    return idp_type_get_send(memctx, ev, idp_id_ctx, IDP_LOOKUP_GROUP,
+                             filter_value, filter_type, NULL, noexist_delete,
+                             set_non_posix);
+
+    /* TODO: handle no_members */
 }
 
 int idp_groups_get_recv(struct tevent_req *req, int *dp_error_out, int *idp_ret)
 {
-    return ENOTSUP;
+    return idp_type_get_recv(req, dp_error_out, idp_ret);
 }
 
 struct tevent_req *idp_groups_by_user_send(TALLOC_CTX *memctx,
