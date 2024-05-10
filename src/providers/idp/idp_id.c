@@ -167,12 +167,20 @@ done:
 }
 
 struct idp_type_get_state {
+    struct tevent_context *ev;
+    struct idp_id_ctx *idp_id_ctx;
     struct idp_req *idp_req;
     int dp_error;
     int idp_ret;
     enum idp_lookup_type lookup_type;
+    const char *filter_value;
+    int filter_type;
+    const char *extra_value;
+    bool noexist_delete;
+    bool set_non_posix;
 };
 
+errno_t idp_type_get_step(struct tevent_req *req);
 static void idp_type_get_done(struct tevent_req *subreq);
 
 struct tevent_req *idp_type_get_send(TALLOC_CTX *memctx,
@@ -186,7 +194,6 @@ struct tevent_req *idp_type_get_send(TALLOC_CTX *memctx,
                                       bool set_non_posix)
 {
     struct tevent_req *req;
-    struct tevent_req *subreq;
     struct idp_type_get_state *state;
     int ret;
 
@@ -196,44 +203,70 @@ struct tevent_req *idp_type_get_send(TALLOC_CTX *memctx,
         return NULL;
     }
 
+    state->ev = ev;
+    state->idp_id_ctx = idp_id_ctx;
     state->dp_error = DP_ERR_FATAL;
     state->idp_ret = ENODATA;
     state->lookup_type = lookup_type;
+    state->filter_value = talloc_strdup(state, filter_value);
+    if (state->filter_value == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to copy filter_value [%s].\n",
+                                 filter_value);
+    }
+    state->filter_type = filter_type;
+    if (extra_value != NULL) {
+        state->extra_value = talloc_strdup(state, extra_value);
+        if (state->extra_value == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to copy extra_value [%s].\n",
+                                     extra_value);
+        }
+    }
+    state->noexist_delete = noexist_delete;
+    state->set_non_posix = set_non_posix;
+
+    ret = idp_type_get_step(req);
+    if (ret != EOK) {
+        tevent_req_error(req, ret);
+        return tevent_req_post(req, ev);
+    }
+
+    return req;
+}
+
+errno_t idp_type_get_step(struct tevent_req *req)
+{
+    int ret;
+    struct idp_type_get_state *state;
+    struct tevent_req *subreq;
+
+    state = tevent_req_data(req, struct idp_type_get_state);
 
     state->idp_req = talloc_zero(state, struct idp_req);
     if (state->idp_req == NULL) {
-        DEBUG(SSSDBG_OP_FAILURE, "Failed to allocate memory for IdP request.\n");
-        ret = ENOMEM;
-        goto immediately;
+        DEBUG(SSSDBG_OP_FAILURE,
+              "Failed to allocate memory for IdP request.\n");
+        return ENOMEM;
     }
 
-    state->idp_req->idp_id_ctx = idp_id_ctx;
+    state->idp_req->idp_id_ctx = state->idp_id_ctx;
 
-    ret = set_oidc_extra_args(state, idp_id_ctx, lookup_type, filter_value,
-                              filter_type,
+    ret = set_oidc_extra_args(state, state->idp_id_ctx, state->lookup_type,
+                              state->filter_value,
+                              state->filter_type,
                               &state->idp_req->oidc_child_extra_args);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
-        goto immediately;
+        return ret;
     }
 
-    subreq = handle_oidc_child_send(state, ev, state->idp_req);
+    subreq = handle_oidc_child_send(state, state->ev, state->idp_req);
     if (subreq == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "handle_oidc_child_send() failed.\n");
-        ret = ENOMEM;
-        goto immediately;
+        return ENOMEM;
     }
     tevent_req_set_callback(subreq, idp_type_get_done, req);
 
-    return req;
-
-immediately:
-    if (ret != EOK) {
-        tevent_req_error(req, ret);
-    } else {
-        tevent_req_done(req);
-    }
-    return tevent_req_post(req, ev);
+    return ret;
 }
 
 static void idp_type_get_done(struct tevent_req *subreq)
@@ -259,13 +292,28 @@ static void idp_type_get_done(struct tevent_req *subreq)
     DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
     switch (state->lookup_type) {
     case IDP_LOOKUP_USER:
-        ret = eval_user_buf(state->idp_req->idp_id_ctx, buf, buflen);
+        ret = eval_user_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
         break;
     case IDP_LOOKUP_GROUP:
         ret = eval_group_buf(state->idp_req->idp_id_ctx, buf, buflen);
+        if (ret == EOK) {
+            DEBUG(SSSDBG_TRACE_ALL, "Looking up group members.\n");
+
+            state->lookup_type = IDP_LOOKUP_GROUP_MEMBERS;
+            talloc_zfree(state->idp_req);
+
+            ret = idp_type_get_step(req);
+            if (ret == EOK) {
+                return;
+            }
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to lookup group members.\n");
+        }
+        break;
+    case IDP_LOOKUP_GROUP_MEMBERS:
+        ret = eval_user_buf(state->idp_req->idp_id_ctx, state->filter_value,
+                            buf, buflen);
         break;
     case IDP_LOOKUP_USER_GROUPS:
-    case IDP_LOOKUP_GROUP_MEMBERS:
     default:
         DEBUG(SSSDBG_OP_FAILURE, "Unsupported lookup type [%d].\n",
                                  state->lookup_type);
@@ -390,7 +438,7 @@ static void idp_users_get_done(struct tevent_req *subreq)
     }
 
     DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
-    ret = eval_user_buf(state->idp_req->idp_id_ctx, buf, buflen);
+    ret = eval_user_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE,
               "Failed to evaluate user data returned by oidc_child.\n");

@@ -28,7 +28,8 @@
 #include "util/util.h"
 #include "providers/idp/idp_id.h"
 
-errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user)
+errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
+                        const char *group_name)
 {
     // sdap_save_user
     errno_t ret;
@@ -86,6 +87,21 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user)
     ret = sysdb_store_user(dom, fqdn, NULL,
                            uid, gid, gecos, homedir, shell, NULL, NULL, NULL,
                            cache_timeout, 0);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to store user [%s].\n", fqdn);
+        goto done;
+    }
+
+    if (group_name != NULL) {
+        ret = sysdb_add_group_member(dom, group_name, fqdn, SYSDB_MEMBER_USER,
+                                     false);
+            if (ret != EOK) {
+                DEBUG(SSSDBG_OP_FAILURE,
+                      "Failed to store user [%s] as member of group [%s].\n",
+                      fqdn, group_name);
+                goto done;
+            }
+    }
 
 done:
     talloc_free(fqdn);
@@ -152,6 +168,7 @@ done:
 }
 
 errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
+                      const char *group_name,
                       uint8_t *buf, ssize_t buflen)
 {
     errno_t ret;
@@ -185,7 +202,7 @@ errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
     }
 
     json_array_foreach(data, index, user) {
-        ret = store_json_user(idp_id_ctx, user);
+        ret = store_json_user(idp_id_ctx, user, group_name);
         if (ret != EOK) {
             tmp = json_dumps(user, 0);
             DEBUG(SSSDBG_OP_FAILURE, "Failed to store JSON user [%s].\n", tmp);
