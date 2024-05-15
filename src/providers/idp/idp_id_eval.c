@@ -81,7 +81,11 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
         ret = EIO;
         goto done;
     }
-    gid = uid;
+    if (dom->mpg_mode != MPG_DISABLED) {
+        gid = 0;
+    } else {
+        gid = uid;
+    }
 
     cache_timeout = dom->user_timeout;
     ret = sysdb_store_user(dom, fqdn, NULL,
