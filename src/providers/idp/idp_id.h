@@ -57,5 +57,6 @@ errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
                       uint8_t *buf, ssize_t buflen);
 
 errno_t eval_group_buf(struct idp_id_ctx *idp_id_ctx,
+                       const char *user_name,
                        uint8_t *buf, ssize_t buflen);
 #endif

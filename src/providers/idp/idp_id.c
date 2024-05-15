@@ -295,7 +295,7 @@ static void idp_type_get_done(struct tevent_req *subreq)
         ret = eval_user_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
         break;
     case IDP_LOOKUP_GROUP:
-        ret = eval_group_buf(state->idp_req->idp_id_ctx, buf, buflen);
+        ret = eval_group_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
         if (ret == EOK) {
             DEBUG(SSSDBG_TRACE_ALL, "Looking up group members.\n");
 
@@ -314,6 +314,9 @@ static void idp_type_get_done(struct tevent_req *subreq)
                             buf, buflen);
         break;
     case IDP_LOOKUP_USER_GROUPS:
+        ret = eval_group_buf(state->idp_req->idp_id_ctx, state->filter_value,
+                             buf, buflen);
+        break;
     default:
         DEBUG(SSSDBG_OP_FAILURE, "Unsupported lookup type [%d].\n",
                                  state->lookup_type);
@@ -500,7 +503,9 @@ struct tevent_req *idp_groups_by_user_send(TALLOC_CTX *memctx,
                                            bool noexist_delete,
                                            bool set_non_posix)
 {
-    return NULL;
+    return idp_type_get_send(memctx, ev, idp_id_ctx, IDP_LOOKUP_USER_GROUPS,
+                             filter_value, filter_type, NULL, noexist_delete,
+                             set_non_posix);
 }
 
 int idp_groups_by_user_recv(struct tevent_req *req, int *dp_error_out, int *idp_ret)

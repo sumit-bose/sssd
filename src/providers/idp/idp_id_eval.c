@@ -113,7 +113,8 @@ done:
     return ret;
 }
 
-errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *user)
+errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *group,
+                         const char *user_name)
 {
     // sdap_save_group
     errno_t ret;
@@ -128,10 +129,10 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *user)
     dom = idp_id_ctx->be_ctx->domain;
 
 
-    group_name = json_object_get(user, "displayName");
+    group_name = json_object_get(group, "displayName");
     if (!json_is_string(group_name)) {
         DEBUG(SSSDBG_OP_FAILURE,
-              "JSON user object does not contain 'displayName' string.\n");
+              "JSON group object does not contain 'displayName' string.\n");
         ret = EINVAL;
         goto done;
     }
@@ -144,10 +145,10 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *user)
         goto done;
     }
 
-    uuid = json_object_get(user, "id");
+    uuid = json_object_get(group, "id");
     if (!json_is_string(uuid)) {
         DEBUG(SSSDBG_OP_FAILURE,
-              "JSON user object does not contain 'id' string.\n");
+              "JSON group object does not contain 'id' string.\n");
         ret = EINVAL;
         goto done;
     }
@@ -164,6 +165,17 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *user)
 
     cache_timeout = dom->user_timeout;
     ret = sysdb_store_group(dom, fqdn, gid, NULL, cache_timeout, 0);
+
+    if (user_name != NULL) {
+        ret = sysdb_add_group_member(dom, fqdn, user_name, SYSDB_MEMBER_USER,
+                                     false);
+            if (ret != EOK) {
+                DEBUG(SSSDBG_OP_FAILURE,
+                      "Failed to store user [%s] as member of group [%s].\n",
+                      user_name, fqdn);
+                goto done;
+            }
+    }
 
 done:
     talloc_free(fqdn);
@@ -221,10 +233,12 @@ done:
     return ret;
 }
 
-typedef errno_t (store_func_t)(struct idp_id_ctx *idp_id_ctx, json_t *obj);
+typedef errno_t (store_func_t)(struct idp_id_ctx *idp_id_ctx, json_t *obj,
+                               const char *name);
 
 errno_t eval_obj_buf(struct idp_id_ctx *idp_id_ctx,
                      const char *type, store_func_t *store_func,
+                     const char *name,
                      uint8_t *buf, ssize_t buflen)
 {
     errno_t ret;
@@ -258,7 +272,7 @@ errno_t eval_obj_buf(struct idp_id_ctx *idp_id_ctx,
     }
 
     json_array_foreach(data, index, obj) {
-        ret = store_func(idp_id_ctx, obj);
+        ret = store_func(idp_id_ctx, obj, name);
         if (ret != EOK) {
             tmp = json_dumps(obj, 0);
             DEBUG(SSSDBG_OP_FAILURE, "Failed to store JSON %s [%s].\n", type, tmp);
@@ -274,7 +288,9 @@ done:
 }
 
 errno_t eval_group_buf(struct idp_id_ctx *idp_id_ctx,
+                       const char *user_name,
                        uint8_t *buf, ssize_t buflen)
 {
-    return eval_obj_buf(idp_id_ctx, "group", store_json_group, buf, buflen);
+    return eval_obj_buf(idp_id_ctx, "group", store_json_group, user_name,
+                        buf, buflen);
 }
