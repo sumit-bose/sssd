@@ -25,7 +25,362 @@
 #include <security/pam_modules.h>
 
 #include "util/util.h"
+#include "util/sss_chain_id.h"
+#include "util/sss_cli_cmd.h"
 #include "src/providers/idp/idp_auth.h"
+
+static errno_t
+set_oidc_auth_extra_args(TALLOC_CTX *mem_ctx, struct idp_auth_ctx *idp_auth_ctx,
+                         struct pam_data *pd,
+                         const char ***oidc_child_extra_args)
+{
+    const char **extra_args;
+    uint64_t chain_id;
+    size_t c = 0;
+    int ret;
+
+    if (idp_auth_ctx == NULL || pd == NULL || oidc_child_extra_args == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Missing required parameter.\n");
+        return EINVAL;
+    }
+
+    extra_args = talloc_zero_array(mem_ctx, const char *, 50);
+    if (extra_args == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_zero_array() failed.\n");
+        return ENOMEM;
+    }
+
+    switch (pd->cmd) {
+    case SSS_PAM_PREAUTH:
+        extra_args[c] = talloc_strdup(extra_args, "--get-device-code");
+        break;
+    case SSS_PAM_AUTHENTICATE:
+        extra_args[c] = talloc_strdup(extra_args, "--get-access-token");
+        break;
+    default:
+        DEBUG(SSSDBG_OP_FAILURE, "Unsupported pam task [%d][%s].\n",
+                                 pd->cmd, sss_cmd2str(pd->cmd));
+        ret = EINVAL;
+        goto done;
+    }
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--client-id=%s",
+                                    idp_auth_ctx->client_id);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--client-secret-stdin");
+#if 0
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--client-secret=%s",
+                                    idp_auth_ctx->client_secret);
+#endif
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--token-endpoint=%s",
+                                    idp_auth_ctx->token_endpoint);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--device-auth-endpoint=%s",
+                                    idp_auth_ctx->device_auth_endpoint);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--userinfo-endpoint=%s",
+                                    idp_auth_ctx->userinfo_endpoint);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--user-identifier-attribute=id");
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--scope=%s",
+                                    idp_auth_ctx->scope);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    chain_id = sss_chain_id_get();
+    extra_args[c] = talloc_asprintf(extra_args,
+                                    "--chain-id=%lu",
+                                    chain_id);
+    if (extra_args[c] == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+    c++;
+
+    extra_args[c] = NULL;
+
+    *oidc_child_extra_args = extra_args;
+
+    ret = EOK;
+
+done:
+
+    if (ret != EOK) {
+        talloc_free(extra_args);
+    }
+
+    return ret;
+}
+
+static errno_t create_auth_send_buffer(TALLOC_CTX *mem_ctx,
+                                       struct idp_auth_ctx *idp_auth_ctx,
+                                       struct pam_data *pd,
+                                       struct io_buffer **io_buf)
+{
+    struct io_buffer *buf = NULL;
+    const char *send_data;
+    int ret;
+    const char *user_code;
+    size_t user_code_len;
+    struct idp_open_req_data *open_req = NULL;
+
+    buf = talloc_zero(mem_ctx, struct io_buffer);
+    if (buf == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "talloc failed.\n");
+        return ENOMEM;
+    }
+
+    switch (pd->cmd) {
+    case SSS_PAM_PREAUTH:
+        send_data = dp_opt_get_cstring(idp_auth_ctx->idp_options,
+                                           IDP_CLIENT_SECRET);
+        if (send_data == NULL || *send_data == '\0') {
+            ret = EOK;
+            goto done;
+        }
+        break;
+    case SSS_PAM_AUTHENTICATE:
+        if (sss_authtok_get_type(pd->authtok) != SSS_AUTHTOK_TYPE_OAUTH2) {
+            DEBUG(SSSDBG_OP_FAILURE,
+                  "Unexpected authentication type [%d][%s].\n",
+                  sss_authtok_get_type(pd->authtok),
+                  sss_authtok_type_to_str(sss_authtok_get_type(pd->authtok)));
+            ret = EINVAL;
+            goto done;
+        }
+
+        ret = sss_authtok_get_oauth2(pd->authtok, &user_code, &user_code_len);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to extract user code.\n");
+            goto done;
+        }
+
+        open_req = sss_ptr_hash_lookup(idp_auth_ctx->open_request_table,
+                                       user_code, struct idp_open_req_data);
+        if (open_req == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE,
+                  "Failed to retrieve stored request data.\n");
+            ret = ENOENT;
+            goto done;
+        }
+        if (open_req->device_code_data == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Missing device code data.\n");
+            ret = ENOENT;
+            goto done;
+        }
+
+        send_data = talloc_steal(buf, open_req->device_code_data);
+        talloc_free(open_req);
+        break;
+    default:
+        DEBUG(SSSDBG_OP_FAILURE, "Unsupported pam task [%d][%s].\n",
+                                 pd->cmd, sss_cmd2str(pd->cmd));
+        ret = EINVAL;
+        goto done;
+    }
+
+    buf->size = strlen(send_data);
+    buf->data = talloc_size(buf, buf->size);
+    if (buf->data == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "talloc_size failed.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+    safealign_memcpy(buf->data, send_data, buf->size, NULL);
+
+    ret = EOK;
+
+done:
+    if (ret == EOK) {
+        *io_buf = buf;
+    } else {
+        talloc_free(buf);
+    }
+
+    return ret;
+}
+
+struct idp_auth_state {
+    struct idp_req *idp_req;
+    struct idp_auth_ctx *idp_auth_ctx;
+    struct pam_data *pd;
+    struct io_buffer *send_buffer;
+};
+
+static void idp_auth_done(struct tevent_req *subreq);
+
+static struct tevent_req *idp_auth_send(TALLOC_CTX *mem_ctx,
+                                        struct tevent_context *ev,
+                                        struct be_ctx *be_ctx,
+                                        struct idp_auth_ctx *idp_auth_ctx,
+                                        struct pam_data *pd)
+{
+    struct tevent_req *req;
+    struct tevent_req *subreq;
+    struct idp_auth_state *state;
+    int ret;
+
+    req = tevent_req_create(mem_ctx, &state, struct idp_auth_state);
+    if (req == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "tevent_req_create() failed.\n");
+        return NULL;
+    }
+    state->idp_auth_ctx = idp_auth_ctx;
+    state->pd = pd;
+
+    state->idp_req = talloc_zero(state, struct idp_req);
+    if (state->idp_req == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to allocate memory for IdP request.\n");
+        ret = ENOMEM;
+        goto immediately;
+    }
+
+    state->idp_req->idp_options = idp_auth_ctx->idp_options;
+
+    ret = set_oidc_auth_extra_args(state, idp_auth_ctx, state->pd,
+                                   &state->idp_req->oidc_child_extra_args);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
+        goto immediately;
+    }
+
+    ret = create_auth_send_buffer(state, idp_auth_ctx, pd, &state->send_buffer);
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to generate send data.\n");
+        goto immediately;
+    }
+
+    subreq = handle_oidc_child_send(state, ev, state->idp_req,
+                                    state->send_buffer);
+    if (subreq == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "handle_oidc_child_send() failed.\n");
+        ret = ENOMEM;
+        goto immediately;
+    }
+    tevent_req_set_callback(subreq, idp_auth_done, req);
+
+    return req;
+
+immediately:
+    if (ret != EOK) {
+        tevent_req_error(req, ret);
+    } else {
+        tevent_req_done(req);
+    }
+    return tevent_req_post(req, ev);
+}
+
+static void idp_auth_done(struct tevent_req *subreq)
+{
+    struct idp_auth_state *state;
+    struct tevent_req *req;
+    errno_t ret;
+
+    uint8_t *buf;
+    ssize_t buflen;
+
+    req = tevent_req_callback_data(subreq, struct tevent_req);
+    state = tevent_req_data(req, struct idp_auth_state);
+
+    ret = handle_oidc_child_recv(subreq, state, &buf, &buflen);
+    talloc_zfree(subreq);
+    if (ret != EOK) {
+        tevent_req_error(req, ret);
+        return;
+    }
+
+    DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
+
+    switch(state->pd->cmd) {
+    case SSS_PAM_PREAUTH:
+        ret = eval_device_auth_buf(state->idp_auth_ctx, state->pd, buf, buflen);
+        break;
+    case SSS_PAM_AUTHENTICATE:
+        ret = eval_access_token_buf(state->idp_auth_ctx, buf, buflen);
+        break;
+    default:
+        DEBUG(SSSDBG_OP_FAILURE, "Unsupported pam task [%d][%s].\n",
+                                 state->pd->cmd, sss_cmd2str(state->pd->cmd));
+        tevent_req_error(req, EINVAL);
+        return;
+    }
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to evaluate IdP reply.\n");
+        tevent_req_error(req, ret);
+        return;
+    }
+
+    tevent_req_done(req);
+}
+
+static int idp_auth_recv(struct tevent_req *req, int *_pam_status)
+{
+    *_pam_status = PAM_SYSTEM_ERR;
+
+    TEVENT_REQ_RETURN_ON_ERROR(req);
+
+    *_pam_status = PAM_SUCCESS;
+
+    return EOK;
+}
 
 struct idp_pam_auth_handler_state {
     struct tevent_context *ev;
@@ -35,6 +390,8 @@ struct idp_pam_auth_handler_state {
     struct sss_domain_info *dom;
 };
 
+static void idp_pam_auth_handler_done(struct tevent_req *subreq);
+
 struct tevent_req *
 idp_pam_auth_handler_send(TALLOC_CTX *mem_ctx,
                           struct idp_auth_ctx *auth_ctx,
@@ -42,7 +399,7 @@ idp_pam_auth_handler_send(TALLOC_CTX *mem_ctx,
                           struct dp_req_params *params)
 {
     struct idp_pam_auth_handler_state *state;
-    //struct tevent_req *subreq;
+    struct tevent_req *subreq;
     struct tevent_req *req;
 
     req = tevent_req_create(mem_ctx, &state,
@@ -65,18 +422,59 @@ idp_pam_auth_handler_send(TALLOC_CTX *mem_ctx,
         goto immediately;
     }
 
-    pd->pam_status = PAM_SYSTEM_ERR;
+    switch (pd->cmd) {
+    case SSS_PAM_PREAUTH:
+    case SSS_PAM_AUTHENTICATE:
+        subreq = idp_auth_send(state, state->ev, state->be_ctx,
+                               state->auth_ctx,  state->pd);
+        if (subreq == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to start IdP authentication.\n");
+            state->pd->pam_status = PAM_SYSTEM_ERR;
+            goto immediately;
+        }
+        tevent_req_set_callback(subreq, idp_pam_auth_handler_done, req);
+        break;
+    case SSS_PAM_SETCRED:
+    case SSS_PAM_OPEN_SESSION:
+    case SSS_PAM_CLOSE_SESSION:
+        pd->pam_status = PAM_SUCCESS;
+        goto immediately;
+        break;
+    default:
+        DEBUG(SSSDBG_CONF_SETTINGS,
+              "idp provider cannot handle pam task [%d][%s].\n",
+              pd->cmd, sss_cmd2str(pd->cmd));
+        pd->pam_status = PAM_MODULE_UNKNOWN;
+        goto immediately;
+    }
 
-
-    //return req;
+    return req;
 
 immediately:
-    /* TODO For backward compatibility we always return EOK to DP now. */
     tevent_req_done(req);
     tevent_req_post(req, params->ev);
 
     return req;
 }
+
+static void idp_pam_auth_handler_done(struct tevent_req *subreq)
+{
+    struct idp_pam_auth_handler_state *state = NULL;
+    struct tevent_req *req;
+    errno_t ret;
+
+    req = tevent_req_callback_data(subreq, struct tevent_req);
+    state = tevent_req_data(req, struct idp_pam_auth_handler_state);
+
+    ret = idp_auth_recv(subreq, &state->pd->pam_status);
+    talloc_zfree(subreq);
+    if (ret != EOK) {
+        state->pd->pam_status = PAM_SYSTEM_ERR;
+    }
+
+    tevent_req_done(req);
+}
+
 errno_t
 idp_pam_auth_handler_recv(TALLOC_CTX *mem_ctx,
                           struct tevent_req *req,

@@ -36,6 +36,11 @@ struct idp_init_ctx {
     struct dp_option *opts;
     struct idp_id_ctx *id_ctx;
     struct idp_auth_ctx *auth_ctx;
+
+    const char *client_id;
+    const char *client_secret;
+    const char *token_endpoint;
+    const char *scope;
 };
 
 static errno_t idp_get_options(TALLOC_CTX *mem_ctx,
@@ -89,6 +94,41 @@ errno_t sssm_idp_init(TALLOC_CTX *mem_ctx,
         goto done;
     }
 
+    init_ctx->client_id = dp_opt_get_cstring(init_ctx->opts,
+                                             IDP_CLIENT_ID);
+    if (init_ctx->client_id == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_client_id'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    init_ctx->client_secret = dp_opt_get_cstring(init_ctx->opts,
+                                                 IDP_CLIENT_SECRET);
+    if (init_ctx->client_secret == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_client_secret'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    init_ctx->token_endpoint = dp_opt_get_cstring(init_ctx->opts,
+                                                  IDP_TOKEN_ENDPOINT);
+    if (init_ctx->token_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_token_endpoint'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    init_ctx->scope = dp_opt_get_cstring(init_ctx->opts, IDP_ID_SCOPE);
+    if (init_ctx->scope == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_scope'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
     *_module_data = init_ctx;
 
     ret = EOK;
@@ -125,39 +165,10 @@ errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
     id_ctx->init_ctx = init_ctx;
     id_ctx->idp_options = init_ctx->opts;
 
-    id_ctx->client_id = dp_opt_get_cstring(id_ctx->idp_options, IDP_CLIENT_ID);
-    if (id_ctx->client_id == NULL) {
-        DEBUG(SSSDBG_CRIT_FAILURE,
-              "Missing required option 'idp_client_id'.\n");
-        ret = EINVAL;
-        goto done;
-    }
-
-    id_ctx->client_secret = dp_opt_get_cstring(id_ctx->idp_options,
-                                               IDP_CLIENT_SECRET);
-    if (id_ctx->client_secret == NULL) {
-        DEBUG(SSSDBG_CRIT_FAILURE,
-              "Missing required option 'idp_client_secret'.\n");
-        ret = EINVAL;
-        goto done;
-    }
-
-    id_ctx->token_endpoint = dp_opt_get_cstring(id_ctx->idp_options,
-                                                    IDP_TOKEN_ENDPOINT);
-    if (id_ctx->token_endpoint == NULL) {
-        DEBUG(SSSDBG_CRIT_FAILURE,
-              "Missing required option 'idp_token_endpoint'.\n");
-        ret = EINVAL;
-        goto done;
-    }
-
-    id_ctx->scope = dp_opt_get_cstring(id_ctx->idp_options, IDP_SCOPE);
-    if (id_ctx->scope == NULL) {
-        DEBUG(SSSDBG_CRIT_FAILURE,
-              "Missing required option 'idp_scope'.\n");
-        ret = EINVAL;
-        goto done;
-    }
+    id_ctx->client_id = init_ctx->client_id;
+    id_ctx->client_secret = init_ctx->client_secret;
+    id_ctx->token_endpoint = init_ctx->token_endpoint;
+    id_ctx->scope = init_ctx->scope;
 
     err = sss_idmap_init(sss_idmap_talloc, init_ctx, sss_idmap_talloc_free,
                          &id_ctx->idmap_ctx);
@@ -219,6 +230,7 @@ errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
 {
     struct idp_init_ctx *init_ctx;
     struct idp_auth_ctx *auth_ctx;
+    int ret;
 
     init_ctx = talloc_get_type(module_data, struct idp_init_ctx);
 
@@ -230,11 +242,55 @@ errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
     }
 
     auth_ctx->be_ctx = be_ctx;
+    auth_ctx->init_ctx = init_ctx;
     auth_ctx->idp_options = init_ctx->opts;
+
+    auth_ctx->client_id = init_ctx->client_id;
+    auth_ctx->client_secret = init_ctx->client_secret;
+    auth_ctx->token_endpoint = init_ctx->token_endpoint;
+
+    auth_ctx->open_request_table = sss_ptr_hash_create(auth_ctx, NULL, NULL);
+    if (auth_ctx->open_request_table == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE, "Failed to create hash table.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+    auth_ctx->scope = dp_opt_get_cstring(init_ctx->opts, IDP_AUTH_SCOPE);
+    if (auth_ctx->scope == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_auth_scope'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    auth_ctx->device_auth_endpoint = dp_opt_get_cstring(init_ctx->opts,
+                                                      IDP_DEVICE_AUTH_ENDPOINT);
+    if (auth_ctx->device_auth_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_device_code_endpoint'.\n");
+        ret = EINVAL;
+        goto done;
+    }
+
+    auth_ctx->userinfo_endpoint = dp_opt_get_cstring(init_ctx->opts,
+                                                     IDP_USERINFO_ENDPOINT);
+    if (auth_ctx->userinfo_endpoint == NULL) {
+        DEBUG(SSSDBG_CRIT_FAILURE,
+              "Missing required option 'idp_userinfo_endpoint'.\n");
+        ret = EINVAL;
+        goto done;
+    }
 
     dp_set_method(dp_methods, DPM_AUTH_HANDLER,
                   idp_pam_auth_handler_send, idp_pam_auth_handler_recv, auth_ctx,
                   struct idp_auth_ctx, struct pam_data, struct pam_data *);
 
-    return EOK;
+    ret =  EOK;
+done:
+    if (ret != EOK) {
+        talloc_free(auth_ctx);
+    }
+
+    return ret;
 }

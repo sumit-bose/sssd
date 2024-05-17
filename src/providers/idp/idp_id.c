@@ -248,7 +248,7 @@ errno_t idp_type_get_step(struct tevent_req *req)
         return ENOMEM;
     }
 
-    state->idp_req->idp_id_ctx = state->idp_id_ctx;
+    state->idp_req->idp_options = state->idp_id_ctx->idp_options;
 
     ret = set_oidc_extra_args(state, state->idp_id_ctx, state->lookup_type,
                               state->filter_value,
@@ -259,7 +259,7 @@ errno_t idp_type_get_step(struct tevent_req *req)
         return ret;
     }
 
-    subreq = handle_oidc_child_send(state, state->ev, state->idp_req);
+    subreq = handle_oidc_child_send(state, state->ev, state->idp_req, NULL);
     if (subreq == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "handle_oidc_child_send() failed.\n");
         return ENOMEM;
@@ -292,10 +292,10 @@ static void idp_type_get_done(struct tevent_req *subreq)
     DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
     switch (state->lookup_type) {
     case IDP_LOOKUP_USER:
-        ret = eval_user_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
+        ret = eval_user_buf(state->idp_id_ctx, NULL, buf, buflen);
         break;
     case IDP_LOOKUP_GROUP:
-        ret = eval_group_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
+        ret = eval_group_buf(state->idp_id_ctx, NULL, buf, buflen);
         if (ret == EOK) {
             DEBUG(SSSDBG_TRACE_ALL, "Looking up group members.\n");
 
@@ -310,11 +310,11 @@ static void idp_type_get_done(struct tevent_req *subreq)
         }
         break;
     case IDP_LOOKUP_GROUP_MEMBERS:
-        ret = eval_user_buf(state->idp_req->idp_id_ctx, state->filter_value,
+        ret = eval_user_buf(state->idp_id_ctx, state->filter_value,
                             buf, buflen);
         break;
     case IDP_LOOKUP_USER_GROUPS:
-        ret = eval_group_buf(state->idp_req->idp_id_ctx, state->filter_value,
+        ret = eval_group_buf(state->idp_id_ctx, state->filter_value,
                              buf, buflen);
         break;
     default:
@@ -354,6 +354,7 @@ int idp_type_get_recv(struct tevent_req *req, int *dp_error_out, int *idp_ret)
 }
 
 struct idp_users_get_state {
+    struct idp_id_ctx *idp_id_ctx;
     struct idp_req *idp_req;
     int dp_error;
     int idp_ret;
@@ -381,6 +382,7 @@ struct tevent_req *idp_users_get_send(TALLOC_CTX *memctx,
         return NULL;
     }
 
+    state->idp_id_ctx = idp_id_ctx;
     state->dp_error = DP_ERR_FATAL;
     state->idp_ret = ENODATA;
 
@@ -391,7 +393,7 @@ struct tevent_req *idp_users_get_send(TALLOC_CTX *memctx,
         goto immediately;
     }
 
-    state->idp_req->idp_id_ctx = idp_id_ctx;
+    state->idp_req->idp_options = idp_id_ctx->idp_options;
 
     ret = set_oidc_extra_args(state, idp_id_ctx, IDP_LOOKUP_USER,
                               filter_value, filter_type,
@@ -401,7 +403,7 @@ struct tevent_req *idp_users_get_send(TALLOC_CTX *memctx,
         goto immediately;
     }
 
-    subreq = handle_oidc_child_send(state, ev, state->idp_req);
+    subreq = handle_oidc_child_send(state, ev, state->idp_req, NULL);
     if (subreq == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "handle_oidc_child_send() failed.\n");
         ret = ENOMEM;
@@ -441,7 +443,7 @@ static void idp_users_get_done(struct tevent_req *subreq)
     }
 
     DEBUG(SSSDBG_TRACE_ALL, "[%zd][%.*s]\n", buflen, (int) buflen, buf);
-    ret = eval_user_buf(state->idp_req->idp_id_ctx, NULL, buf, buflen);
+    ret = eval_user_buf(state->idp_id_ctx, NULL, buf, buflen);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE,
               "Failed to evaluate user data returned by oidc_child.\n");

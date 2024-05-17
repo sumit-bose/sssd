@@ -4709,8 +4709,10 @@ libsss_idp_la_SOURCES = \
     src/providers/idp/idp_id.c \
     src/providers/idp/idp_id_eval.c \
     src/providers/idp/idp_auth.c \
+    src/providers/idp/idp_auth_eval.c \
     src/providers/idp/idp_online_check.c \
     src/providers/idp/oidc_child_handler.c \
+    src/krb5_plugin/common/utils.c \
     $(NULL)
 
 libsss_idp_la_CFLAGS = \

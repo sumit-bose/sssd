@@ -27,10 +27,24 @@
 
 #include "providers/backend.h"
 #include "providers/idp/idp_common.h"
+#include "util/sss_ptr_hash.h"
 
 struct idp_auth_ctx {
     struct be_ctx *be_ctx;
+    struct idp_init_ctx *init_ctx;
     struct dp_option *idp_options;
+    hash_table_t *open_request_table;
+
+    const char *client_id;
+    const char *client_secret;
+    const char *token_endpoint;
+    const char *device_auth_endpoint;
+    const char *userinfo_endpoint;
+    const char *scope;
+};
+
+struct idp_open_req_data {
+    char *device_code_data;
 };
 
 struct tevent_req *
@@ -44,4 +58,10 @@ idp_pam_auth_handler_recv(TALLOC_CTX *mem_ctx,
                           struct tevent_req *req,
                           struct pam_data **_data);
 
+errno_t eval_device_auth_buf(struct idp_auth_ctx *idp_auth_ctx,
+                             struct pam_data *pd,
+                             uint8_t *buf, ssize_t buflen);
+
+errno_t eval_access_token_buf(struct idp_auth_ctx *idp_auth_ctx,
+                              uint8_t *buf, ssize_t buflen);
 #endif /* _IDP_AUTH_H_ */

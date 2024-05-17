@@ -32,13 +32,16 @@
 #include "providers/backend.h"
 #include "util/util.h"
 
-enum krb5_opts {
+enum idp_opts {
     IDP_OPENID_CONFIGURATION = 0,
     IDP_REQ_TIMEOUT,
     IDP_CLIENT_ID,
     IDP_CLIENT_SECRET,
     IDP_TOKEN_ENDPOINT,
-    IDP_SCOPE,
+    IDP_DEVICE_AUTH_ENDPOINT,
+    IDP_USERINFO_ENDPOINT,
+    IDP_ID_SCOPE,
+    IDP_AUTH_SCOPE,
 
     IDP_OPTS
 };
@@ -46,8 +49,9 @@ enum krb5_opts {
 struct idp_id_ctx;
 
 struct idp_req {
-    struct idp_id_ctx *idp_id_ctx;
+    struct dp_option *idp_options;
     const char **oidc_child_extra_args;
+    struct io_buffer *send_buffer;
 };
 
 
@@ -64,7 +68,8 @@ errno_t idp_online_check_handler_recv(TALLOC_CTX *mem_ctx,
 /* oidc_child_handler.c */
 struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
                                          struct tevent_context *ev,
-                                         struct idp_req *idp_req);
+                                         struct idp_req *idp_req,
+                                         struct io_buffer *send_buffer);
 
 int handle_oidc_child_recv(struct tevent_req *req, TALLOC_CTX *mem_ctx,
                            uint8_t **buf, ssize_t *len);

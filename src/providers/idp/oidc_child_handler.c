@@ -78,9 +78,9 @@ static void oidc_child_timeout(struct tevent_context *ev,
     state->io->in_use = false;
 
     DEBUG(SSSDBG_IMPORTANT_INFO,
-          "Timeout for child [%d] reached. In case KDC is distant or network "
-           "is slow you may consider increasing value of krb5_auth_timeout.\n",
-           state->child_pid);
+          "Timeout for child [%d] reached. In case IdP is distant or network "
+          "is slow you may consider increasing value of idp_request_timeout.\n",
+          state->child_pid);
 
     oidc_child_terminate(state->child_pid);
 
@@ -209,7 +209,7 @@ static errno_t fork_child(struct tevent_context *ev,
     }
 
     /* Steal the io pair so it can outlive this request if needed. */
-    talloc_steal(idp_req->idp_id_ctx, io);
+    talloc_steal(idp_req->idp_options, io);
 
     *_child_pid = pid;
     *_io = io;
@@ -240,7 +240,7 @@ static errno_t create_send_buffer(struct idp_req *idp_req,
         return ENOMEM;
     }
 
-    client_secret = dp_opt_get_cstring(idp_req->idp_id_ctx->idp_options,
+    client_secret = dp_opt_get_cstring(idp_req->idp_options,
                                        IDP_CLIENT_SECRET);
     if (client_secret == NULL || *client_secret == '\0') {
         ret = EOK;
@@ -272,7 +272,8 @@ static void handle_oidc_child_done(struct tevent_req *subreq);
 
 struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
                                          struct tevent_context *ev,
-                                         struct idp_req *idp_req)
+                                         struct idp_req *idp_req,
+                                         struct io_buffer *send_buffer)
 {
     struct tevent_req *req, *subreq;
     struct handle_oidc_child_state *state;
@@ -291,10 +292,14 @@ struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
     state->child_pid = -1;
     state->timeout_handler = NULL;
 
-    ret = create_send_buffer(idp_req, &buf);
-    if (ret != EOK) {
-        DEBUG(SSSDBG_CRIT_FAILURE, "create_send_buffer failed.\n");
-        goto fail;
+    if (send_buffer == NULL) {
+        ret = create_send_buffer(idp_req, &buf);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_CRIT_FAILURE, "create_send_buffer failed.\n");
+            goto fail;
+        }
+    } else {
+        buf = send_buffer;
     }
 
     /* Create new child. */
@@ -306,7 +311,7 @@ struct tevent_req *handle_oidc_child_send(TALLOC_CTX *mem_ctx,
 
     /* Setup timeout. If failed, terminate the child process. */
     ret = activate_child_timeout_handler(req, ev,
-                                         dp_opt_get_int(idp_req->idp_id_ctx->idp_options,
+                                         dp_opt_get_int(idp_req->idp_options,
                                                         IDP_REQ_TIMEOUT));
     if (ret != EOK) {
         DEBUG(SSSDBG_CRIT_FAILURE, "Unable to setup child timeout "
