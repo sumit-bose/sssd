@@ -351,6 +351,8 @@ static void handle_oidc_child_send_done(struct tevent_req *subreq)
         goto done;
     }
 
+    PIPE_FD_CLOSE(state->io->write_to_child_fd);
+
     subreq = read_pipe_send(state, state->ev,
                             state->io->read_from_child_fd);
     if (!subreq) {
