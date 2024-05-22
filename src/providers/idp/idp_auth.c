@@ -154,6 +154,16 @@ set_oidc_auth_extra_args(TALLOC_CTX *mem_ctx, struct idp_auth_ctx *idp_auth_ctx,
     }
     c++;
 
+    if (DEBUG_IS_SET(SSSDBG_TRACE_LIBS)) {
+        extra_args[c] = talloc_asprintf(extra_args, "--libcurl-debug");
+        if (extra_args[c] == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+        c++;
+    }
+
     extra_args[c] = NULL;
 
     *oidc_child_extra_args = extra_args;
@@ -226,7 +236,16 @@ static errno_t create_auth_send_buffer(TALLOC_CTX *mem_ctx,
             goto done;
         }
 
-        send_data = talloc_steal(buf, open_req->device_code_data);
+        send_data = talloc_asprintf(buf, "%s\n%s",
+                                    dp_opt_get_cstring(idp_auth_ctx->idp_options,
+                                                       IDP_CLIENT_SECRET),
+                                    open_req->device_code_data);
+        if (send_data == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to generate auth data.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+
         talloc_free(open_req);
         break;
     default:
