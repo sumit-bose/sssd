@@ -44,6 +44,7 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
     gid_t gid;
     char *fqdn = NULL;
     enum idmap_error_code err;
+    struct sysdb_attrs *attrs = NULL;
 
     dom = idp_id_ctx->be_ctx->domain;
 
@@ -87,9 +88,23 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
         gid = uid;
     }
 
+    attrs = sysdb_new_attrs(idp_id_ctx);
+    if (attrs == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "Failed to allocate memory for extra attributes.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+    ret = sysdb_attrs_add_string(attrs, SYSDB_UUID, json_string_value(uuid));
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to add UUID to user attributes.\n");
+        goto done;
+    }
+
     cache_timeout = dom->user_timeout;
     ret = sysdb_store_user(dom, fqdn, NULL,
-                           uid, gid, gecos, homedir, shell, NULL, NULL, NULL,
+                           uid, gid, gecos, homedir, shell, NULL, attrs, NULL,
                            cache_timeout, 0);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE, "Failed to store user [%s].\n", fqdn);
@@ -108,6 +123,7 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
     }
 
 done:
+    talloc_free(attrs);
     talloc_free(fqdn);
 
     return ret;
@@ -125,6 +141,7 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *group,
     gid_t gid;
     char *fqdn = NULL;
     enum idmap_error_code err;
+    struct sysdb_attrs *attrs = NULL;
 
     dom = idp_id_ctx->be_ctx->domain;
 
@@ -163,8 +180,22 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *group,
         goto done;
     }
 
+    attrs = sysdb_new_attrs(idp_id_ctx);
+    if (attrs == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE,
+              "Failed to allocate memory for extra attributes.\n");
+        ret = ENOMEM;
+        goto done;
+    }
+
+    ret = sysdb_attrs_add_string(attrs, SYSDB_UUID, json_string_value(uuid));
+    if (ret != EOK) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to add UUID to group attributes.\n");
+        goto done;
+    }
+
     cache_timeout = dom->user_timeout;
-    ret = sysdb_store_group(dom, fqdn, gid, NULL, cache_timeout, 0);
+    ret = sysdb_store_group(dom, fqdn, gid, attrs, cache_timeout, 0);
 
     if (user_name != NULL) {
         ret = sysdb_add_group_member(dom, fqdn, user_name, SYSDB_MEMBER_USER,
@@ -178,6 +209,7 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *group,
     }
 
 done:
+    talloc_free(attrs);
     talloc_free(fqdn);
 
     return ret;

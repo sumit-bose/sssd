@@ -63,5 +63,6 @@ errno_t eval_device_auth_buf(struct idp_auth_ctx *idp_auth_ctx,
                              uint8_t *buf, ssize_t buflen);
 
 errno_t eval_access_token_buf(struct idp_auth_ctx *idp_auth_ctx,
+                              struct pam_data *pd, struct sss_domain_info *dom,
                               uint8_t *buf, ssize_t buflen);
 #endif /* _IDP_AUTH_H_ */

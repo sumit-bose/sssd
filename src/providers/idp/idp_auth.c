@@ -281,6 +281,7 @@ struct idp_auth_state {
     struct idp_req *idp_req;
     struct idp_auth_ctx *idp_auth_ctx;
     struct pam_data *pd;
+    struct sss_domain_info *dom;
     struct io_buffer *send_buffer;
 };
 
@@ -290,7 +291,8 @@ static struct tevent_req *idp_auth_send(TALLOC_CTX *mem_ctx,
                                         struct tevent_context *ev,
                                         struct be_ctx *be_ctx,
                                         struct idp_auth_ctx *idp_auth_ctx,
-                                        struct pam_data *pd)
+                                        struct pam_data *pd,
+                                        struct sss_domain_info *dom)
 {
     struct tevent_req *req;
     struct tevent_req *subreq;
@@ -304,6 +306,7 @@ static struct tevent_req *idp_auth_send(TALLOC_CTX *mem_ctx,
     }
     state->idp_auth_ctx = idp_auth_ctx;
     state->pd = pd;
+    state->dom = dom;
 
     state->idp_req = talloc_zero(state, struct idp_req);
     if (state->idp_req == NULL) {
@@ -373,7 +376,8 @@ static void idp_auth_done(struct tevent_req *subreq)
         ret = eval_device_auth_buf(state->idp_auth_ctx, state->pd, buf, buflen);
         break;
     case SSS_PAM_AUTHENTICATE:
-        ret = eval_access_token_buf(state->idp_auth_ctx, buf, buflen);
+        ret = eval_access_token_buf(state->idp_auth_ctx, state->pd, state->dom,
+                                    buf, buflen);
         break;
     default:
         DEBUG(SSSDBG_OP_FAILURE, "Unsupported pam task [%d][%s].\n",
@@ -445,7 +449,7 @@ idp_pam_auth_handler_send(TALLOC_CTX *mem_ctx,
     case SSS_PAM_PREAUTH:
     case SSS_PAM_AUTHENTICATE:
         subreq = idp_auth_send(state, state->ev, state->be_ctx,
-                               state->auth_ctx,  state->pd);
+                               state->auth_ctx,  state->pd, state->dom);
         if (subreq == NULL) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to start IdP authentication.\n");
             state->pd->pam_status = PAM_SYSTEM_ERR;
