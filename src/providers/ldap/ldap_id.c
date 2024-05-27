@@ -1211,6 +1211,18 @@ struct tevent_req *groups_by_user_send(TALLOC_CTX *memctx,
         state->non_posix = true;
     }
 
+    /* should group members be ignored uncondtionally or base on
+     * ignore_group_members or not at all ? */
+#if 0
+    const char *member_filter[2];
+    member_filter[0] = (const char *)ctx->opts->group_map[SDAP_AT_GROUP_MEMBER].name;
+    member_filter[1] = NULL;
+
+    ret = build_attrs_from_map(state, ctx->opts->group_map, SDAP_OPTS_GROUP,
+                               state->domain->ignore_group_members ?
+                                   (const char **)member_filter : NULL,
+                               &state->attrs, NULL);
+#endif
     ret = build_attrs_from_map(state, ctx->opts->group_map, SDAP_OPTS_GROUP,
                                NULL, &state->attrs, NULL);
     if (ret != EOK) goto fail;

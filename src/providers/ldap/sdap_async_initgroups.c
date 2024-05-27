@@ -966,6 +966,7 @@ static errno_t sdap_initgr_nested_deref_search(struct tevent_req *req)
     maps[0].num_attrs = SDAP_OPTS_GROUP;
     maps[1].map = NULL;
 
+    /* there is state->grp_attrs which can be used */
     ret = build_attrs_from_map(state, state->opts->group_map, SDAP_OPTS_GROUP,
                                NULL, &sdap_attrs, NULL);
     if (ret != EOK) goto fail;
