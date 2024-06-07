@@ -35,6 +35,7 @@ struct idp_id_ctx {
     struct dp_option *idp_options;
     struct sss_idmap_ctx *idmap_ctx;
 
+    const char *idp_type;
     const char *client_id;
     const char *client_secret;
     const char *token_endpoint;

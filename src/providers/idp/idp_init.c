@@ -37,6 +37,7 @@ struct idp_init_ctx {
     struct idp_id_ctx *id_ctx;
     struct idp_auth_ctx *auth_ctx;
 
+    const char *idp_type;
     const char *client_id;
     const char *client_secret;
     const char *token_endpoint;
@@ -93,6 +94,9 @@ errno_t sssm_idp_init(TALLOC_CTX *mem_ctx,
               "[%d]: %s\n", ret, sss_strerror(ret));
         goto done;
     }
+
+    /* idp_type may be NULL */
+    init_ctx->idp_type = dp_opt_get_cstring(init_ctx->opts, IDP_TYPE);
 
     init_ctx->client_id = dp_opt_get_cstring(init_ctx->opts,
                                              IDP_CLIENT_ID);
@@ -165,6 +169,7 @@ errno_t sssm_idp_id_init(TALLOC_CTX *mem_ctx,
     id_ctx->init_ctx = init_ctx;
     id_ctx->idp_options = init_ctx->opts;
 
+    id_ctx->idp_type = init_ctx->idp_type;
     id_ctx->client_id = init_ctx->client_id;
     id_ctx->client_secret = init_ctx->client_secret;
     id_ctx->token_endpoint = init_ctx->token_endpoint;
@@ -245,6 +250,7 @@ errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
     auth_ctx->init_ctx = init_ctx;
     auth_ctx->idp_options = init_ctx->opts;
 
+    auth_ctx->idp_type = init_ctx->idp_type;
     auth_ctx->client_id = init_ctx->client_id;
     auth_ctx->client_secret = init_ctx->client_secret;
     auth_ctx->token_endpoint = init_ctx->token_endpoint;
@@ -255,6 +261,7 @@ errno_t sssm_idp_auth_init(TALLOC_CTX *mem_ctx,
         ret = ENOMEM;
         goto done;
     }
+
 
     auth_ctx->scope = dp_opt_get_cstring(init_ctx->opts, IDP_AUTH_SCOPE);
     if (auth_ctx->scope == NULL) {

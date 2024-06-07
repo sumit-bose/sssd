@@ -215,6 +215,7 @@ done:
     return ret;
 }
 
+#if 0
 errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
                       const char *group_name,
                       uint8_t *buf, ssize_t buflen)
@@ -264,6 +265,7 @@ done:
 
     return ret;
 }
+#endif
 
 typedef errno_t (store_func_t)(struct idp_id_ctx *idp_id_ctx, json_t *obj,
                                const char *name);
@@ -317,6 +319,14 @@ done:
     json_decref(data);
 
     return ret;
+}
+
+errno_t eval_user_buf(struct idp_id_ctx *idp_id_ctx,
+                      const char *group_name,
+                      uint8_t *buf, ssize_t buflen)
+{
+    return eval_obj_buf(idp_id_ctx, "user", store_json_user, group_name,
+                        buf, buflen);
 }
 
 errno_t eval_group_buf(struct idp_id_ctx *idp_id_ctx,

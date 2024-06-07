@@ -35,6 +35,7 @@ struct idp_auth_ctx {
     struct dp_option *idp_options;
     hash_table_t *open_request_table;
 
+    const char *idp_type;
     const char *client_id;
     const char *client_secret;
     const char *token_endpoint;

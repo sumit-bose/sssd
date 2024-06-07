@@ -70,6 +70,18 @@ set_oidc_auth_extra_args(TALLOC_CTX *mem_ctx, struct idp_auth_ctx *idp_auth_ctx,
     }
     c++;
 
+    if (idp_auth_ctx->idp_type != NULL) {
+        extra_args[c] = talloc_asprintf(extra_args,
+                                        "--idp-type=%s",
+                                        idp_auth_ctx->idp_type);
+        if (extra_args[c] == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+        c++;
+    }
+
     extra_args[c] = talloc_asprintf(extra_args,
                                     "--client-id=%s",
                                     idp_auth_ctx->client_id);

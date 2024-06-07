@@ -90,6 +90,18 @@ errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
     }
     c++;
 
+    if (idp_id_ctx->idp_type != NULL) {
+        extra_args[c] = talloc_asprintf(extra_args,
+                                        "--idp-type=%s",
+                                        idp_id_ctx->idp_type);
+        if (extra_args[c] == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+        c++;
+    }
+
     extra_args[c] = talloc_asprintf(extra_args,
                                     "--client-id=%s",
                                     idp_id_ctx->client_id);
@@ -150,6 +162,16 @@ errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
         goto done;
     }
     c++;
+
+    if (DEBUG_IS_SET(SSSDBG_TRACE_LIBS)) {
+        extra_args[c] = talloc_asprintf(extra_args, "--libcurl-debug");
+        if (extra_args[c] == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
+            ret = ENOMEM;
+            goto done;
+        }
+        c++;
+    }
 
     extra_args[c] = NULL;
 
