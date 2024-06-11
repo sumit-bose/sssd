@@ -38,15 +38,18 @@ enum idp_lookup_type {
     IDP_LOOKUP_GROUP_MEMBERS
 };
 
+static
 errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
                             enum idp_lookup_type lookup_type,
                             const char *filter_value, int filter_type,
+                            const char *extra_value,
                             const char ***oidc_child_extra_args)
 {
     const char **extra_args;
     uint64_t chain_id;
     size_t c = 0;
     int ret;
+    char *search_name = NULL;
 
     if (idp_id_ctx == NULL || oidc_child_extra_args == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "Missing required parameter.\n");
@@ -56,6 +59,11 @@ errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
     if (filter_type != BE_FILTER_NAME) {
         DEBUG(SSSDBG_OP_FAILURE, "Unsupported filter type [%d].\n",
                                  filter_type);
+        return EINVAL;
+    }
+
+    if (filter_value == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Missing name to search for.\n");
         return EINVAL;
     }
 
@@ -142,9 +150,26 @@ errno_t set_oidc_extra_args(TALLOC_CTX *mem_ctx, struct idp_id_ctx *idp_id_ctx,
     }
     c++;
 
-    extra_args[c] = talloc_asprintf(extra_args,
-                                    "--name=%s",
-                                    filter_value);
+    if (extra_value == NULL || strcmp(extra_value, EXTRA_NAME_IS_UPN) != 0) {
+        ret = sss_parse_internal_fqname(extra_args, filter_value, &search_name,
+                                        NULL);
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Cannot parse fqname [%s]\n.",
+                                     filter_value);
+            goto done;
+        }
+
+        if (search_name == NULL) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to set name to search for.\n");
+            ret = EINVAL;
+            goto done;
+        }
+
+    }
+
+    extra_args[c] = talloc_asprintf(extra_args, "--name=%s",
+                                    search_name != NULL ? search_name
+                                                        : filter_value);
     if (extra_args[c] == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
         ret = ENOMEM;
@@ -275,6 +300,7 @@ errno_t idp_type_get_step(struct tevent_req *req)
     ret = set_oidc_extra_args(state, state->idp_id_ctx, state->lookup_type,
                               state->filter_value,
                               state->filter_type,
+                              state->extra_value,
                               &state->idp_req->oidc_child_extra_args);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
@@ -418,7 +444,7 @@ struct tevent_req *idp_users_get_send(TALLOC_CTX *memctx,
     state->idp_req->idp_options = idp_id_ctx->idp_options;
 
     ret = set_oidc_extra_args(state, idp_id_ctx, IDP_LOOKUP_USER,
-                              filter_value, filter_type,
+                              filter_value, filter_type, extra_value,
                               &state->idp_req->oidc_child_extra_args);
     if (ret != EOK) {
         DEBUG(SSSDBG_OP_FAILURE, "set_oidc_extra_args() failed.\n");
