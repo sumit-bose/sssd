@@ -146,10 +146,10 @@ errno_t store_json_group(struct idp_id_ctx *idp_id_ctx, json_t *group,
     dom = idp_id_ctx->be_ctx->domain;
 
 
-    group_name = json_object_get(group, "displayName");
+    group_name = json_object_get(group, "posixGroupname");
     if (!json_is_string(group_name)) {
         DEBUG(SSSDBG_OP_FAILURE,
-              "JSON group object does not contain 'displayName' string.\n");
+              "JSON group object does not contain 'posixGroupname' string.\n");
         ret = EINVAL;
         goto done;
     }
