@@ -49,10 +49,10 @@ errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
     dom = idp_id_ctx->be_ctx->domain;
 
 
-    user_name = json_object_get(user, "displayName");
+    user_name = json_object_get(user, "posixUsername");
     if (!json_is_string(user_name)) {
         DEBUG(SSSDBG_OP_FAILURE,
-              "JSON user object does not contain 'displayName' string.\n");
+              "JSON user object does not contain 'posixUsername' string.\n");
         ret = EINVAL;
         goto done;
     }
