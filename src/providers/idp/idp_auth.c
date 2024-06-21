@@ -136,8 +136,15 @@ set_oidc_auth_extra_args(TALLOC_CTX *mem_ctx, struct idp_auth_ctx *idp_auth_ctx,
     }
     c++;
 
-    extra_args[c] = talloc_asprintf(extra_args,
-                                    "--user-identifier-attribute=id");
+    if (idp_auth_ctx->idp_type != NULL
+            && strncasecmp(idp_auth_ctx->idp_type, "keycloak:", 9) == 0) {
+        /* Keycloak is using the 'id' attribute as 'sub' for OIDC */
+        extra_args[c] = talloc_asprintf(extra_args,
+                                        "--user-identifier-attribute=sub");
+    } else {
+        extra_args[c] = talloc_asprintf(extra_args,
+                                        "--user-identifier-attribute=id");
+    }
     if (extra_args[c] == NULL) {
         DEBUG(SSSDBG_OP_FAILURE, "talloc_asprintf failed.\n");
         ret = ENOMEM;
