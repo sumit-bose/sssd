@@ -31,6 +31,18 @@
 #include "lib/idmap/sss_idmap.h"
 #include "util/util_sss_idmap.h"
 
+enum idmap_error_code sss_idmap_add_gen_domain_ex(struct sss_idmap_ctx *ctx,
+                                                  const char *domain_name,
+                                                  const char *domain_id,
+                                                  struct sss_idmap_range *range,
+                                                  const char *range_id,
+                                                  void *offset_func,
+                                                  void *rev_offset_func,
+                                                  void *offset_func_pvt,
+                                                  uint32_t shift,
+                                                  bool external_mapping) __attribute__((weak));
+
+
 struct idp_init_ctx {
     struct be_ctx *be_ctx;
     struct dp_option *opts;

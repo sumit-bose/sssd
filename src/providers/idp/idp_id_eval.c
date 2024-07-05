@@ -28,6 +28,12 @@
 #include "util/util.h"
 #include "providers/idp/idp_id.h"
 
+enum idmap_error_code sss_idmap_gen_to_unix(struct sss_idmap_ctx *ctx,
+                                            const char *domain_id,
+                                            const char *input,
+                                            uint32_t *_id) __attribute__((weak));
+
+
 errno_t store_json_user(struct idp_id_ctx *idp_id_ctx, json_t *user,
                         const char *group_name)
 {
