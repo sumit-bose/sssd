@@ -200,7 +200,7 @@ done:
     if (ret == EOK && out != NULL) {
         ret = add_posix_to_json_string_array(mem_ctx,
                                              &keycloak_name_and_type_identifier,
-                                             get_http_data(rest_ctx), out);
+                                             0, get_http_data(rest_ctx), out);
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to add POSIX data.\n");
         }
@@ -232,7 +232,7 @@ errno_t oidc_get_id(TALLOC_CTX *mem_ctx, enum oidc_cmd oidc_cmd,
     struct name_and_type_identifier entra_name_and_type_identifier = {
                             .user_identifier_attr = "userPrincipalName",
                             .group_identifier_attr = "groupTypes",
-                            .user_name_attr = "displayName",
+                            .user_name_attr = "userPrincipalName",
                             .group_name_attr = "displayName" };
 
     if (!IS_ID_CMD(oidc_cmd)) {
@@ -280,7 +280,7 @@ errno_t oidc_get_id(TALLOC_CTX *mem_ctx, enum oidc_cmd oidc_cmd,
     case GET_USER_GROUPS:
         sep = strrchr(input, '@');
         if (sep == NULL || sep == input) {
-            filter = talloc_asprintf(rest_ctx, "displayName eq '%s'", input);
+            filter = talloc_asprintf(rest_ctx, "startsWith(userPrincipalName,'%s@')", input);
         } else {
             filter = talloc_asprintf(rest_ctx,
                                      "mail eq '%s' or userPrincipalName eq '%s'",
@@ -444,7 +444,7 @@ done:
     if (ret == EOK && out != NULL) {
         ret = add_posix_to_json_string_array(mem_ctx,
                                              &entra_name_and_type_identifier,
-                                             *out, &tmp);
+                                             '@', *out, &tmp);
         talloc_free(*out);
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to add POSIX data.\n");

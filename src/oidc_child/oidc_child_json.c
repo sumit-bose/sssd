@@ -783,10 +783,61 @@ done:
     return out;
 }
 
-static errno_t add_posix_to_json(json_t *item,
-                                 struct name_and_type_identifier *map)
+static errno_t get_and_set_name(json_t *item, char domain_seperator,
+                                const char *attr_name,
+                                const char *new_key)
 {
     json_t *attr = NULL;
+    json_t *tmp = NULL;
+    char *sep;
+    const char *str;
+    int ret;
+
+    if (item == NULL || attr_name == NULL || new_key == NULL) {
+        DEBUG(SSSDBG_OP_FAILURE, "Missing parameter.\n");
+        return EINVAL;
+    }
+
+    attr = json_object_get(item, attr_name);
+    if (attr == NULL || !json_is_string(attr)) {
+        DEBUG(SSSDBG_TRACE_LIBS, "Failed to get '%s'.\n", attr_name);
+        ret = EINVAL;
+        goto done;
+    }
+
+    /* strip domain name part if any */
+    if (domain_seperator != 0) {
+        str = json_string_value(attr);
+        if ((sep = strrchr(str, domain_seperator)) != NULL) {
+            if (sep != str) { /* check if name starts with '@' */
+                tmp = json_stringn(str, sep - str);
+                if (tmp == NULL) {
+                    DEBUG(SSSDBG_OP_FAILURE,
+                          "Failed to create short name from [%s].\n", str);
+                    ret = EIO;
+                    goto done;
+                }
+            }
+        }
+    }
+
+    ret = json_object_set(item, new_key, tmp == NULL ? attr : tmp);
+    if (ret != 0) {
+        DEBUG(SSSDBG_OP_FAILURE, "Failed to add '%s'.\n", new_key);
+        ret = EIO;
+        goto done;
+    }
+
+done:
+    json_decref(tmp);
+
+    return ret;
+}
+
+static errno_t add_posix_to_json(json_t *item,
+                                 struct name_and_type_identifier *map,
+                                 char domain_seperator)
+{
     json_t *tmp = NULL;
     int ret;
     bool is_user = false;
@@ -813,18 +864,10 @@ static errno_t add_posix_to_json(json_t *item,
     }
 
     if (is_user) {
-        attr = json_object_get(item, map->user_name_attr);
-        if (attr == NULL || !json_is_string(attr)) {
-            DEBUG(SSSDBG_TRACE_LIBS, "Failed to get '%s'.\n",
-                                     map->user_name_attr);
-            ret = EINVAL;
-            goto done;
-        }
-
-        ret = json_object_set(item, "posixUsername", attr);
-        if (ret != 0) {
-            DEBUG(SSSDBG_OP_FAILURE, "Failed to add 'posixUsername'.\n");
-            ret = EIO;
+        ret = get_and_set_name(item, domain_seperator, map->user_name_attr,
+                               "posixUsername");
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to set 'posixUsername'.\n");
             goto done;
         }
 
@@ -835,18 +878,10 @@ static errno_t add_posix_to_json(json_t *item,
             goto done;
         }
     } else if (is_group) {
-        attr = json_object_get(item, map->group_name_attr);
-        if (attr == NULL || !json_is_string(attr)) {
-            DEBUG(SSSDBG_TRACE_LIBS, "Failed to get '%s'.\n",
-                                     map->group_name_attr);
-            ret = EINVAL;
-            goto done;
-        }
-
-        ret = json_object_set(item, "posixGroupname", attr);
-        if (ret != 0) {
-            DEBUG(SSSDBG_OP_FAILURE, "Failed to add 'posixUsername'.\n");
-            ret = EIO;
+        ret = get_and_set_name(item, domain_seperator, map->group_name_attr,
+                               "posixGroupname");
+        if (ret != EOK) {
+            DEBUG(SSSDBG_OP_FAILURE, "Failed to set 'posixUsername'.\n");
             goto done;
         }
 
@@ -879,6 +914,7 @@ done:
 
 errno_t add_posix_to_json_string_array(TALLOC_CTX *mem_ctx,
                                        struct name_and_type_identifier *map,
+                                       char domain_seperator,
                                        const char *in,
                                        char **out)
 {
@@ -911,7 +947,7 @@ errno_t add_posix_to_json_string_array(TALLOC_CTX *mem_ctx,
     }
 
     json_array_foreach(array, index, item) {
-        ret = add_posix_to_json(item, map);
+        ret = add_posix_to_json(item, map, domain_seperator);
         if (ret != EOK) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to add POSIX data.\n");
             json_decref(new_array);

@@ -168,6 +168,7 @@ char *get_json_string_array_by_id_list(TALLOC_CTX *mem_ctx,
 
 errno_t add_posix_to_json_string_array(TALLOC_CTX *mem_ctx,
                                        struct name_and_type_identifier *map,
+                                       char domain_seperator,
                                        const char *in,
                                        char **out);
 
