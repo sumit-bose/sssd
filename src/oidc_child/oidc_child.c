@@ -618,6 +618,20 @@ int main(int argc, const char *argv[])
         user_identifier = get_user_identifier(dc_ctx, dc_ctx->td->userinfo,
                                               opts.user_identifier_attr);
         if (user_identifier == NULL) {
+            if (dc_ctx->td->id_token_payload != NULL) {
+                user_identifier = get_user_identifier(dc_ctx, dc_ctx->td->id_token_payload,
+                                                      opts.user_identifier_attr);
+            }
+        }
+
+        if (user_identifier == NULL) {
+            if (dc_ctx->td->access_token_payload != NULL) {
+                user_identifier = get_user_identifier(dc_ctx, dc_ctx->td->access_token_payload,
+                                                      opts.user_identifier_attr);
+            }
+        }
+
+        if (user_identifier == NULL) {
             DEBUG(SSSDBG_OP_FAILURE, "Failed to get user identifier.\n");
             goto done;
         }
