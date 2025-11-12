@@ -34,6 +34,10 @@
 
 #include <security/pam_appl.h>
 
+#ifdef HAVE_GDM_CUSTOM_JSON_PAM_EXTENSION
+#include <gdm/gdm-custom-json-pam-extension.h>
+#endif
+
 #include "util/util.h"
 #include "tools/common/sss_tools.h"
 #include "tools/sssctl/sssctl.h"
@@ -57,6 +61,44 @@ static struct pam_conv conv = {
 };
 #else
 # error "Missing text based pam conversation function"
+#endif
+
+#ifdef HAVE_GDM_CUSTOM_JSON_PAM_EXTENSION
+int sssctl_pam_binary_conv(int num_msg, const struct pam_message **msg,
+                           struct pam_response **resp, void *appdata_ptr)
+{
+    const GdmPamExtensionJSONProtocol *request = NULL;
+
+    if (num_msg <= 0) {
+        return PAM_CONV_ERR;
+    }
+
+    if (num_msg != 1 || msg[0]->msg_style != PAM_BINARY_PROMPT) {
+        return conv.conv(num_msg, msg, resp, appdata_ptr);
+    }
+
+    request = (const GdmPamExtensionJSONProtocol *) msg[0]->msg;
+
+    /* Currently we cannot handle any prompting here and hence not return any
+     * suitable resp. So we just print the received data and return an error.
+     */
+    fprintf(stdout, "Received JSON data:\n%s\n", request->json);
+    fprintf(stdout, "Currently this data cannot be processed any further,\n"
+                    "expect an authentication failure.\n\n");
+    fflush(stdout);
+
+    return PAM_CONV_ERR;
+}
+
+static struct pam_conv bin_conv = {
+    sssctl_pam_binary_conv,
+    NULL
+};
+#else
+static struct pam_conv bin_conv = {
+    NULL,
+    NULL
+};
 #endif
 
 #define DEFAULT_ACTION "acct"
@@ -228,6 +270,7 @@ errno_t sssctl_user_checks(struct sss_cmdline *cmdline,
     const char *pam_user = NULL;
     size_t c;
     char **pam_env;
+    struct pam_conv local_conv = bin_conv.conv != NULL ? bin_conv : conv;
 
     /* Parse command line. */
     struct poptOption options[] = {
@@ -261,7 +304,7 @@ errno_t sssctl_user_checks(struct sss_cmdline *cmdline,
         }
     }
 
-    ret = pam_start(service, user, &conv, &pamh);
+    ret = pam_start(service, user, &local_conv, &pamh);
     if (ret != PAM_SUCCESS) {
         ERROR("pam_start failed: %s\n", pam_strerror(pamh, ret));
         ret = EPERM;
