@@ -259,6 +259,8 @@ def test_disable_an2ln(client: Client, provider: GenericProvider):
 
     client.fs.rm("/var/lib/sss/pubconf/krb5.include.d/localauth_plugin")
     client.sssd.start()
+    client.host.conn.run('rpm -qf /usr/lib64/sssd/libsss_util.so')
+    client.host.conn.run('strings /usr/lib64/sssd/libsss_util.so |grep  an2')
 
     with client.ssh("tuser", "Secret123") as ssh:
         with client.auth.kerberos(ssh) as krb:
